@@ -284,8 +284,8 @@ function aggregate(rows, key) {
   return g;
 }
 
-// ── Orders (no "Other" — DG/DIS campaigns excluded from type/region tables) ──
-const TYPE_ORDER   = ['GymManagement', 'Modality', 'Branded', 'Competitor'];
+// ── Orders ────────────────────────────────────────────────────────────────────
+const TYPE_ORDER   = ['GymManagement', 'Modality', 'Branded', 'Competitor', 'Demand Gen'];
 const REGION_ORDER = ['NAM', 'EMEA', 'APAC', 'Global'];
 
 // ── Funnel table ──────────────────────────────────────────────────────────────
@@ -322,7 +322,7 @@ function renderRegionTypeTable(rows) {
   const tbody = document.getElementById('tbody-region-type');
   const g = {};
   for (const r of rows) {
-    if (!TYPE_ORDER.includes(r.campaign_type)) continue;   // skip Other/DG/DIS
+    if (!TYPE_ORDER.includes(r.campaign_type)) continue;   // skip unrecognised types
     const k = r.region + '|||' + r.campaign_type;
     if (!g[k]) g[k] = { region: r.region, type: r.campaign_type, cost:0, mql:0, sql:0 };
     g[k].cost += r.cost; g[k].mql += r.mql; g[k].sql += r.sql;
@@ -474,7 +474,7 @@ document.getElementById('meta-line').textContent =
   'Last updated: ' + D.generated_at + '  ·  Data source: Google Ads API + Looker';
 document.getElementById('footer-note').innerHTML =
   'Paid Search = Google &amp; Bing SEM  ·  Paid Other = Facebook, Display &amp; Demand Gen  ·  ' +
-  'Display/Demand Gen campaigns without a type keyword excluded from campaign tables  ·  Generated: ' + D.generated_at;
+  'Demand Gen = DG/DIS campaigns (shown as separate row in campaign type table)  ·  Generated: ' + D.generated_at;
 
 const { fromYM: f0, toYM: t0 } = periodToRange('3');
 selFrom.value = f0; selTo.value = t0;

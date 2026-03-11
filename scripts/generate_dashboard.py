@@ -100,7 +100,16 @@ def parse_campaign_meta(name: str) -> dict:
     """
     parts = name.split("_")
 
+    # Channel classification first — needed to set Demand Gen campaign type
+    if "SEM" in parts:
+        channel = "Paid Search"
+    elif any(p in parts for p in ("SM", "DG", "DIS")):
+        channel = "Paid Other"
+    else:
+        channel = "Other"
+
     # Campaign type (check substrings in order of specificity)
+    # DG/DIS campaigns without a named type → "Demand Gen" bucket
     if "GymMgmt" in parts:
         campaign_type = "GymManagement"
     elif "Branded" in parts:
@@ -109,6 +118,8 @@ def parse_campaign_meta(name: str) -> dict:
         campaign_type = "Competitor"
     elif "Modality" in parts:
         campaign_type = "Modality"
+    elif channel == "Paid Other":
+        campaign_type = "Demand Gen"
     else:
         campaign_type = "Other"
 
@@ -129,14 +140,6 @@ def parse_campaign_meta(name: str) -> dict:
         if pu == "NAM":
             region = "NAM"
             break
-
-    # Channel classification for Paid Search vs Paid Other widget
-    if "SEM" in parts:
-        channel = "Paid Search"
-    elif any(p in parts for p in ("SM", "DG", "DIS")):
-        channel = "Paid Other"
-    else:
-        channel = "Other"
 
     return {"campaign_type": campaign_type, "region": region, "channel": channel}
 
