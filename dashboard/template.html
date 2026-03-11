@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glofox Paid Media Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #F1F5F9;
+    color: #1E293B;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ── Layout ── */
+  .header {
+    background: #1E293B;
+    color: #F8FAFC;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .header .meta { font-size: 12px; color: #94A3B8; margin-top: 2px; }
+  .header .logo { font-size: 22px; font-weight: 800; color: #3B82F6; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px 24px 48px; }
+
+  /* ── Period filter ── */
+  .period-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 24px;
+  }
+  .period-bar span { font-size: 13px; color: #64748B; margin-right: 4px; }
+  .period-btn {
+    padding: 6px 14px;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 6px;
+    background: #fff;
+    color: #475569;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .period-btn:hover { border-color: #3B82F6; color: #3B82F6; }
+  .period-btn.active { background: #3B82F6; border-color: #3B82F6; color: #fff; font-weight: 600; }
+
+  /* ── KPI bar ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .kpi-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px 18px;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .kpi-card .kpi-label { font-size: 11px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .kpi-card .kpi-value { font-size: 24px; font-weight: 700; color: #1E293B; margin-top: 4px; }
+  .kpi-card .kpi-sub { font-size: 12px; color: #94A3B8; margin-top: 2px; }
+
+  /* ── Section headers ── */
+  .section { margin-bottom: 28px; }
+  .section-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1E293B;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title .badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748B;
+    background: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    border-radius: 4px;
+    padding: 2px 7px;
+  }
+
+  /* ── Tables ── */
+  .table-wrap {
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #E2E8F0;
+    overflow: auto;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    border-bottom: 1px solid #E2E8F0;
+    background: #F8FAFC;
+    white-space: nowrap;
+  }
+  thead th:not(:first-child) { text-align: right; }
+  tbody tr { border-bottom: 1px solid #F1F5F9; transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #F8FAFC; }
+  tbody td { padding: 11px 14px; white-space: nowrap; }
+  tbody td:first-child { font-weight: 600; color: #1E293B; }
+  tbody td:not(:first-child) { text-align: right; color: #475569; }
+  .tfoot-row td {
+    padding: 10px 14px;
+    font-weight: 700;
+    color: #1E293B;
+    background: #F8FAFC;
+    border-top: 2px solid #E2E8F0;
+    font-size: 13px;
+  }
+  .tfoot-row td:not(:first-child) { text-align: right; }
+
+  /* Rate cell coloring */
+  .rate-hi { color: #16A34A; font-weight: 600; }
+  .rate-mid { color: #D97706; font-weight: 600; }
+  .rate-lo { color: #DC2626; font-weight: 600; }
+
+  /* ── Comparison cards (Paid Search vs Other) ── */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 700px) { .compare-grid { grid-template-columns: 1fr; } }
+
+  .compare-card {
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #E2E8F0;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .compare-card h3 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #1E293B;
+  }
+  .compare-card .cc-def {
+    font-size: 11px;
+    color: #94A3B8;
+    margin-bottom: 16px;
+  }
+  .cc-metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .cc-metric .cc-label { font-size: 11px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+  .cc-metric .cc-val { font-size: 20px; font-weight: 700; color: #1E293B; margin-top: 3px; }
+  .cc-metric .cc-sub { font-size: 11px; color: #94A3B8; }
+
+  .compare-bar-wrap {
+    margin-top: 20px;
+    height: 180px;
+    position: relative;
+  }
+
+  /* ── Footer note ── */
+  .footer-note {
+    font-size: 12px;
+    color: #94A3B8;
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid #E2E8F0;
+    text-align: center;
+  }
+
+  /* ── Empty state ── */
+  .empty { padding: 32px; text-align: center; color: #94A3B8; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- Data injected by generate_dashboard.py -->
+<script>window.DASHBOARD_DATA = /* __DASHBOARD_DATA__ */;</script>
+
+<header class="header">
+  <div>
+    <h1>Glofox Paid Media Dashboard</h1>
+    <div class="meta" id="meta-line">Loading…</div>
+  </div>
+  <div class="logo">GF</div>
+</header>
+
+<div class="container">
+
+  <!-- Period filter -->
+  <div class="period-bar">
+    <span>Period:</span>
+    <button class="period-btn" data-period="1">Last 1M</button>
+    <button class="period-btn active" data-period="3">Last 3M</button>
+    <button class="period-btn" data-period="6">Last 6M</button>
+    <button class="period-btn" data-period="ytd">YTD</button>
+  </div>
+
+  <!-- KPI bar -->
+  <div class="kpi-grid" id="kpi-grid"></div>
+
+  <!-- Full funnel by campaign type -->
+  <div class="section">
+    <div class="section-title">
+      Full Funnel by Campaign Type
+      <span class="badge">Google &amp; Bing PPC</span>
+    </div>
+    <div class="table-wrap">
+      <table id="table-type">
+        <thead>
+          <tr>
+            <th>Campaign Type</th>
+            <th>Impressions</th>
+            <th>Clicks</th>
+            <th>CTR</th>
+            <th>Cost</th>
+            <th>MQL</th>
+            <th>Impr→MQL%</th>
+            <th>SQL</th>
+            <th>MQL→SQL%</th>
+            <th>Cost/MQL</th>
+            <th>Cost/SQL</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-type"></tbody>
+        <tfoot id="tfoot-type"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Full funnel by region -->
+  <div class="section">
+    <div class="section-title">
+      Full Funnel by Region
+      <span class="badge">NAM · EMEA · APAC · Global</span>
+    </div>
+    <div class="table-wrap">
+      <table id="table-region">
+        <thead>
+          <tr>
+            <th>Region</th>
+            <th>Impressions</th>
+            <th>Clicks</th>
+            <th>CTR</th>
+            <th>Cost</th>
+            <th>MQL</th>
+            <th>Impr→MQL%</th>
+            <th>SQL</th>
+            <th>MQL→SQL%</th>
+            <th>Cost/MQL</th>
+            <th>Cost/SQL</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-region"></tbody>
+        <tfoot id="tfoot-region"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Paid Search vs Paid Other -->
+  <div class="section">
+    <div class="section-title">
+      Paid Search vs. Paid Other — MQL:SQL Comparison
+    </div>
+    <div class="compare-grid">
+      <div class="compare-card" id="card-search"></div>
+      <div class="compare-card" id="card-other"></div>
+    </div>
+    <div style="margin-top:16px; background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
+      <canvas id="chart-compare" height="80"></canvas>
+    </div>
+  </div>
+
+  <div class="footer-note" id="footer-note"></div>
+
+</div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const D = window.DASHBOARD_DATA;
+
+function fmt$  (n) { return n >= 1000 ? '$' + (n/1000).toFixed(1) + 'k' : '$' + n.toFixed(0); }
+function fmtN  (n) { return n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n); }
+function fmtPct(r) { return (r*100).toFixed(1) + '%'; }
+function fmtPctRaw(r) { return r.toFixed(1) + '%'; }  // already a pct value
+function div   (a,b){ return b > 0 ? a / b : 0; }
+
+function rateClass(r) {
+  // MQL→SQL: hi >30%, mid 15-30%, lo <15%
+  if (r >= 0.30) return 'rate-hi';
+  if (r >= 0.15) return 'rate-mid';
+  return 'rate-lo';
+}
+
+// ── Period filtering ──────────────────────────────────────────────────────────
+function maxYM(rows) {
+  let year = 0, month = 0;
+  for (const r of rows) {
+    if (r.year > year || (r.year === year && r.month > month)) {
+      year = r.year; month = r.month;
+    }
+  }
+  return { year, month };
+}
+
+function filterByPeriod(rows, period) {
+  if (!rows.length) return rows;
+  const { year: maxY, month: maxM } = maxYM(rows);
+  // Determine how many months back
+  let cutoffYear, cutoffMonth;
+  if (period === 'ytd') {
+    cutoffYear = maxY; cutoffMonth = 1;
+  } else {
+    const totalMonths = maxY * 12 + maxM - Number(period);
+    cutoffYear = Math.floor(totalMonths / 12);
+    cutoffMonth = totalMonths % 12 + 1;
+    if (cutoffMonth === 0) { cutoffMonth = 12; cutoffYear--; }
+  }
+  return rows.filter(r =>
+    r.year > cutoffYear || (r.year === cutoffYear && r.month >= cutoffMonth)
+  );
+}
+
+// ── Aggregation ───────────────────────────────────────────────────────────────
+function aggregate(rows, groupKey) {
+  const groups = {};
+  for (const r of rows) {
+    const k = r[groupKey] || 'Unknown';
+    if (!groups[k]) groups[k] = { impressions:0, clicks:0, cost:0, mql:0, sql:0 };
+    const g = groups[k];
+    g.impressions += r.impressions;
+    g.clicks      += r.clicks;
+    g.cost        += r.cost;
+    g.mql         += r.mql;
+    g.sql         += r.sql;
+  }
+  return groups;
+}
+
+function totals(groups) {
+  const t = { impressions:0, clicks:0, cost:0, mql:0, sql:0 };
+  for (const g of Object.values(groups)) {
+    t.impressions += g.impressions;
+    t.clicks      += g.clicks;
+    t.cost        += g.cost;
+    t.mql         += g.mql;
+    t.sql         += g.sql;
+  }
+  return t;
+}
+
+// ── Table rendering ───────────────────────────────────────────────────────────
+const TYPE_ORDER   = ['GymManagement', 'Modality', 'Branded', 'Competitor', 'Other'];
+const REGION_ORDER = ['NAM', 'EMEA', 'APAC', 'Global'];
+
+function renderFunnelRow(label, g) {
+  const ctr     = div(g.clicks, g.impressions);
+  const imprMql = div(g.mql, g.impressions);
+  const mqlSql  = div(g.sql, g.mql);
+  const cpMql   = div(g.cost, g.mql);
+  const cpSql   = div(g.cost, g.sql);
+  return `
+    <tr>
+      <td>${label}</td>
+      <td>${fmtN(g.impressions)}</td>
+      <td>${fmtN(g.clicks)}</td>
+      <td>${fmtPct(ctr)}</td>
+      <td>${fmt$(g.cost)}</td>
+      <td>${fmtN(g.mql)}</td>
+      <td>${fmtPct(imprMql)}</td>
+      <td>${fmtN(g.sql)}</td>
+      <td class="${rateClass(mqlSql)}">${fmtPct(mqlSql)}</td>
+      <td>${g.mql > 0 ? fmt$(cpMql) : '—'}</td>
+      <td>${g.sql > 0 ? fmt$(cpSql) : '—'}</td>
+    </tr>`;
+}
+
+function renderFunnelTable(tbodyId, tfootId, groups, order) {
+  const tbody = document.getElementById(tbodyId);
+  const tfoot = document.getElementById(tfootId);
+  const keys = order.filter(k => groups[k]);
+  // Add any unordered keys
+  for (const k of Object.keys(groups)) {
+    if (!keys.includes(k)) keys.push(k);
+  }
+  if (!keys.length) { tbody.innerHTML = '<tr><td colspan="11" class="empty">No data for this period.</td></tr>'; return; }
+
+  tbody.innerHTML = keys.map(k => renderFunnelRow(k, groups[k])).join('');
+
+  const t = totals(groups);
+  const ctr    = div(t.clicks, t.impressions);
+  const imrMql = div(t.mql, t.impressions);
+  const mqlSql = div(t.sql, t.mql);
+  const cpMql  = div(t.cost, t.mql);
+  const cpSql  = div(t.cost, t.sql);
+  tfoot.innerHTML = `
+    <tr class="tfoot-row">
+      <td>Total</td>
+      <td>${fmtN(t.impressions)}</td>
+      <td>${fmtN(t.clicks)}</td>
+      <td>${fmtPct(ctr)}</td>
+      <td>${fmt$(t.cost)}</td>
+      <td>${fmtN(t.mql)}</td>
+      <td>${fmtPct(imrMql)}</td>
+      <td>${fmtN(t.sql)}</td>
+      <td class="${rateClass(mqlSql)}">${fmtPct(mqlSql)}</td>
+      <td>${t.mql > 0 ? fmt$(cpMql) : '—'}</td>
+      <td>${t.sql > 0 ? fmt$(cpSql) : '—'}</td>
+    </tr>`;
+}
+
+// ── KPI bar ───────────────────────────────────────────────────────────────────
+function renderKpis(kpiRows) {
+  if (!kpiRows.length) { document.getElementById('kpi-grid').innerHTML = '<p class="empty">No KPI data.</p>'; return; }
+  const t = kpiRows.reduce((acc, r) => {
+    acc.spend  += r.spend;
+    acc.mql    += r.mql;
+    acc.sql    += r.sql;
+    acc.cw     += r.cw;
+    return acc;
+  }, { spend:0, mql:0, sql:0, cw:0 });
+
+  const mqlSql = div(t.sql, t.mql);
+  const cpMql  = div(t.spend, t.mql);
+  const cpSql  = div(t.spend, t.sql);
+
+  const cards = [
+    { label: 'Total Spend',   value: fmt$(t.spend),         sub: 'Paid media cost' },
+    { label: 'MQL',           value: fmtN(t.mql),           sub: 'Mktg qualified leads' },
+    { label: 'SQL',           value: fmtN(t.sql),           sub: 'Sales qualified leads' },
+    { label: 'MQL → SQL',     value: fmtPct(mqlSql),        sub: 'Conversion rate' },
+    { label: 'Cost / MQL',    value: fmt$(cpMql),           sub: 'Avg across all paid' },
+    { label: 'Cost / SQL',    value: fmt$(cpSql),           sub: 'Avg across all paid' },
+  ];
+  document.getElementById('kpi-grid').innerHTML = cards.map(c => `
+    <div class="kpi-card">
+      <div class="kpi-label">${c.label}</div>
+      <div class="kpi-value">${c.value}</div>
+      <div class="kpi-sub">${c.sub}</div>
+    </div>`).join('');
+}
+
+// ── Comparison cards ──────────────────────────────────────────────────────────
+let compareChart = null;
+
+function renderCompareCard(cardId, label, def, g) {
+  const mqlSql = div(g.sql, g.mql);
+  const cpMql  = div(g.cost, g.mql);
+  const cpSql  = div(g.cost, g.sql);
+  document.getElementById(cardId).innerHTML = `
+    <h3>${label}</h3>
+    <div class="cc-def">${def}</div>
+    <div class="cc-metrics">
+      <div class="cc-metric">
+        <div class="cc-label">Clicks</div>
+        <div class="cc-val">${fmtN(g.clicks)}</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">MQL</div>
+        <div class="cc-val">${fmtN(g.mql)}</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">SQL</div>
+        <div class="cc-val">${fmtN(g.sql)}</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">MQL→SQL</div>
+        <div class="cc-val ${rateClass(mqlSql)}">${fmtPct(mqlSql)}</div>
+        <div class="cc-sub">conversion rate</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">Cost/MQL</div>
+        <div class="cc-val">${g.mql > 0 ? fmt$(cpMql) : '—'}</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">Cost/SQL</div>
+        <div class="cc-val">${g.sql > 0 ? fmt$(cpSql) : '—'}</div>
+      </div>
+    </div>`;
+}
+
+function renderCompareChart(search, other) {
+  if (compareChart) { compareChart.destroy(); compareChart = null; }
+  const ctx = document.getElementById('chart-compare').getContext('2d');
+  const labels = ['Clicks', 'MQL', 'SQL'];
+  compareChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Paid Search',
+          data: [search.clicks, search.mql, search.sql],
+          backgroundColor: '#3B82F6',
+          borderRadius: 4,
+        },
+        {
+          label: 'Paid Other',
+          data: [other.clicks, other.mql, other.sql],
+          backgroundColor: '#F59E0B',
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 12 }, padding: 16 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { font: { size: 12 } }, grid: { color: '#F1F5F9' } },
+        x: { ticks: { font: { size: 12 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+function render(period) {
+  const filteredCampaigns = filterByPeriod(D.campaigns, period);
+  const filteredKpis      = filterByPeriod(D.monthly_kpis, period);
+
+  // KPI bar
+  renderKpis(filteredKpis);
+
+  // Campaign type table
+  const byType = aggregate(filteredCampaigns, 'campaign_type');
+  renderFunnelTable('tbody-type', 'tfoot-type', byType, TYPE_ORDER);
+
+  // Region table
+  const byRegion = aggregate(filteredCampaigns, 'region');
+  renderFunnelTable('tbody-region', 'tfoot-region', byRegion, REGION_ORDER);
+
+  // Paid Search vs Paid Other
+  const empty = { impressions:0, clicks:0, cost:0, mql:0, sql:0 };
+  const byChannel = aggregate(filteredCampaigns, 'channel');
+  const search = byChannel['Paid Search'] || { ...empty };
+  const pother = byChannel['Paid Other']  || { ...empty };
+
+  renderCompareCard(
+    'card-search', 'Paid Search',
+    'Google &amp; Bing SEM campaigns',
+    search
+  );
+  renderCompareCard(
+    'card-other', 'Paid Other',
+    'Facebook, Display &amp; Demand Gen campaigns',
+    pother
+  );
+  renderCompareChart(search, pother);
+}
+
+// ── Period button wiring ──────────────────────────────────────────────────────
+let activePeriod = 3;
+
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activePeriod = btn.dataset.period === 'ytd' ? 'ytd' : Number(btn.dataset.period);
+    render(activePeriod);
+  });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.getElementById('meta-line').textContent =
+  'Last updated: ' + D.generated_at + '  ·  Data source: Google Ads API + Looker';
+
+document.getElementById('footer-note').innerHTML =
+  'Paid Search = Google &amp; Bing SEM campaigns  ·  ' +
+  'Paid Other = Facebook, Display &amp; Demand Gen  ·  ' +
+  'Closed/Won shown at aggregate level only (not available per campaign)  ·  ' +
+  'Generated: ' + D.generated_at;
+
+render(activePeriod);
+</script>
+</body>
+</html>

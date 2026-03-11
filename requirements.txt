@@ -1,0 +1,10 @@
+# Google Ads API
+google-ads>=24.0.0
+
+# Google Sheets API + auth
+google-api-python-client>=2.120.0
+google-auth>=2.28.0
+google-auth-httplib2>=0.2.0
+
+# Meta Ads SDK (existing)
+facebook-business>=19.0.0

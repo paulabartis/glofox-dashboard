@@ -1,0 +1,48 @@
+name: Weekly Dashboard Refresh
+
+on:
+  schedule:
+    # Every Monday at 6:00 AM UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI
+
+jobs:
+  refresh:
+    name: Sync data and regenerate dashboard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Sync Google Ads data → GadsData sheet tab
+        env:
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID:       ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET:   ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_REFRESH_TOKEN:   ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GOOGLE_ADS_CUSTOMER_ID:     ${{ secrets.GOOGLE_ADS_CUSTOMER_ID }}
+          GLOFOX_SHEETS_SA_KEY:       ${{ secrets.GLOFOX_SHEETS_SA_KEY }}
+        run: python scripts/sync_gads_to_sheet.py --months 13
+
+      - name: Generate dashboard HTML
+        env:
+          GLOFOX_SHEETS_SA_KEY: ${{ secrets.GLOFOX_SHEETS_SA_KEY }}
+        run: python scripts/generate_dashboard.py
+
+      - name: Commit and push updated dashboard
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dashboard/index.html
+          git diff --staged --quiet || git commit -m "chore: refresh dashboard $(date -u +%Y-%m-%d)"
+          git push
