@@ -10,11 +10,13 @@ vanilla JS + Chart.js. This script only prepares and injects the data.
 
 Usage:
     python scripts/generate_dashboard.py
-    python scripts/generate_dashboard.py --template dashboard/template.html --output dashboard/index.html
+    python scripts/generate_dashboard.py --template dashboard/template.html --output index.html
 
 Author: Claude Code
 Created: 2026-03-11
 """
+
+from __future__ import annotations
 
 import argparse
 import base64
@@ -380,7 +382,7 @@ def main():
         help="Path to HTML template file",
     )
     parser.add_argument(
-        "--output", default="dashboard/index.html",
+        "--output", default="index.html",
         help="Path for generated HTML output",
     )
     args = parser.parse_args()

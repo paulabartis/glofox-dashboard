@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glofox Paid Media Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #F1F5F9;
+    color: #1E293B;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ── Layout ── */
+  .header {
+    background: #1E293B;
+    color: #F8FAFC;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .header .meta { font-size: 12px; color: #94A3B8; margin-top: 2px; }
+  .header .logo { font-size: 22px; font-weight: 800; color: #3B82F6; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px 24px 48px; }
+
+  /* ── Period filter ── */
+  .period-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 24px;
+  }
+  .period-bar span { font-size: 13px; color: #64748B; margin-right: 4px; }
+  .period-btn {
+    padding: 6px 14px;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 6px;
+    background: #fff;
+    color: #475569;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .period-btn:hover { border-color: #3B82F6; color: #3B82F6; }
+  .period-btn.active { background: #3B82F6; border-color: #3B82F6; color: #fff; font-weight: 600; }
+
+  /* ── KPI bar ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .kpi-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px 18px;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .kpi-card .kpi-label { font-size: 11px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .kpi-card .kpi-value { font-size: 24px; font-weight: 700; color: #1E293B; margin-top: 4px; }
+  .kpi-card .kpi-sub { font-size: 12px; color: #94A3B8; margin-top: 2px; }
+
+  /* ── Section headers ── */
+  .section { margin-bottom: 28px; }
+  .section-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1E293B;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title .badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748B;
+    background: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    border-radius: 4px;
+    padding: 2px 7px;
+  }
+
+  /* ── Tables ── */
+  .table-wrap {
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #E2E8F0;
+    overflow: auto;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    border-bottom: 1px solid #E2E8F0;
+    background: #F8FAFC;
+    white-space: nowrap;
+  }
+  thead th:not(:first-child) { text-align: right; }
+  tbody tr { border-bottom: 1px solid #F1F5F9; transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #F8FAFC; }
+  tbody td { padding: 11px 14px; white-space: nowrap; }
+  tbody td:first-child { font-weight: 600; color: #1E293B; }
+  tbody td:not(:first-child) { text-align: right; color: #475569; }
+  .tfoot-row td {
+    padding: 10px 14px;
+    font-weight: 700;
+    color: #1E293B;
+    background: #F8FAFC;
+    border-top: 2px solid #E2E8F0;
+    font-size: 13px;
+  }
+  .tfoot-row td:not(:first-child) { text-align: right; }
+
+  /* Rate cell coloring */
+  .rate-hi { color: #16A34A; font-weight: 600; }
+  .rate-mid { color: #D97706; font-weight: 600; }
+  .rate-lo { color: #DC2626; font-weight: 600; }
+
+  /* ── Comparison cards (Paid Search vs Other) ── */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 700px) { .compare-grid { grid-template-columns: 1fr; } }
+
+  .compare-card {
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #E2E8F0;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .compare-card h3 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #1E293B;
+  }
+  .compare-card .cc-def {
+    font-size: 11px;
+    color: #94A3B8;
+    margin-bottom: 16px;
+  }
+  .cc-metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .cc-metric .cc-label { font-size: 11px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+  .cc-metric .cc-val { font-size: 20px; font-weight: 700; color: #1E293B; margin-top: 3px; }
+  .cc-metric .cc-sub { font-size: 11px; color: #94A3B8; }
+
+  .compare-bar-wrap {
+    margin-top: 20px;
+    height: 180px;
+    position: relative;
+  }
+
+  /* ── Footer note ── */
+  .footer-note {
+    font-size: 12px;
+    color: #94A3B8;
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid #E2E8F0;
+    text-align: center;
+  }
+
+  /* ── Empty state ── */
+  .empty { padding: 32px; text-align: center; color: #94A3B8; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- Data injected by generate_dashboard.py -->
+<script>window.DASHBOARD_DATA = {"generated_at":"2026-03-11","campaigns":[{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_California","year":2025,"month":1,"label":"Jan '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_California","year":2025,"month":1,"label":"Jan '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":28,"sql":13},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":25,"sql":6},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":59,"sql":30},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":22,"sql":9},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":6,"sql":3},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_SoftwareAdvice_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_DIS_Consideration_NA_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Other","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":33,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":104,"sql":56},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":287,"sql":105},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":217,"sql":86},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":318,"sql":76},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":433,"sql":122},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":1,"label":"Jan '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":837,"sql":153},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":2,"label":"Feb '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":20,"sql":8},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":25,"sql":10},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":71,"sql":23},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_DIS_Consideration_NA_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"Other","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":6,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":88,"sql":40},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":203,"sql":67},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":211,"sql":64},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":255,"sql":73},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":388,"sql":109},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":2,"label":"Feb '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":703,"sql":139},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_WW","year":2025,"month":3,"label":"Mar '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"IG_23_PPC_Adwords_CompetitorKeyTerms","year":2025,"month":3,"label":"Mar '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":15,"sql":8},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":38,"sql":13},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":85,"sql":34},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":115,"sql":38},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":206,"sql":78},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":213,"sql":69},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":202,"sql":56},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":477,"sql":129},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":3,"label":"Mar '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":568,"sql":125},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_California","year":2025,"month":4,"label":"Apr '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":3},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":4,"label":"Apr '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_Texas","year":2025,"month":4,"label":"Apr '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_WW","year":2025,"month":4,"label":"Apr '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Capterra_Fitness","year":2025,"month":4,"label":"Apr '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":17,"sql":13},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":28,"sql":7},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":54,"sql":28},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":1},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":114,"sql":56},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":198,"sql":68},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":228,"sql":79},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":256,"sql":87},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_042325","year":2025,"month":4,"label":"Apr '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":13,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_082725","year":2025,"month":4,"label":"Apr '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":423,"sql":121},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":4,"label":"Apr '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":608,"sql":127},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_California","year":2025,"month":5,"label":"May '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":5,"label":"May '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":8,"sql":5},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":46,"sql":18},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":5,"label":"May '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":68,"sql":18},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":11,"sql":2},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":5,"sql":2},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_SoftwareAdvice_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":129,"sql":56},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":186,"sql":81},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":277,"sql":66},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":5,"label":"May '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":247,"sql":71},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_042325","year":2025,"month":5,"label":"May '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":67,"sql":9},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":5,"label":"May '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":379,"sql":104},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":5,"label":"May '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":660,"sql":151},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":6,"label":"Jun '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":5},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":44,"sql":11},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":60,"sql":19},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":2},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":106,"sql":37},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":144,"sql":64},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":266,"sql":55},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":255,"sql":65},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_042325","year":2025,"month":6,"label":"Jun '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":347,"sql":85},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":6,"label":"Jun '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":603,"sql":154},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":7,"label":"Jul '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GlofoxBranded_WW","year":2025,"month":7,"label":"Jul '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":31,"sql":18},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":33,"sql":12},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":66,"sql":25},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":4},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":103,"sql":37},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":154,"sql":71},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":293,"sql":58},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":230,"sql":65},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":386,"sql":66},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":7,"label":"Jul '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":527,"sql":124},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":8,"label":"Aug '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_WW","year":2025,"month":8,"label":"Aug '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":17,"sql":10},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":24,"sql":8},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmtTopTerms_WW_081125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":10,"sql":4},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":60,"sql":31},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_APAC_082725","year":2025,"month":8,"label":"Aug '25","campaign_type":"Branded","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_080125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":23,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":114,"sql":52},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":171,"sql":62},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_APAC_082725","year":2025,"month":8,"label":"Aug '25","campaign_type":"Competitor","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":6,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_080125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":32,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":264,"sql":68},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":239,"sql":49},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_082725","year":2025,"month":8,"label":"Aug '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":19,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_080125","year":2025,"month":8,"label":"Aug '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":38,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":390,"sql":76},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":8,"label":"Aug '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":452,"sql":92},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":9,"label":"Sep '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_WW","year":2025,"month":9,"label":"Sep '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":3},{"campaign_name":"IG_23_PPC_Adwords_CompetitorKeyTerms","year":2025,"month":9,"label":"Sep '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":25,"sql":15},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":31,"sql":18},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmtTopTerms_WW_081125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":21,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":93,"sql":23},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":6,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_APAC_082725","year":2025,"month":9,"label":"Sep '25","campaign_type":"Branded","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":37,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_080125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":23,"sql":10},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":102,"sql":48},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":131,"sql":56},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_APAC_082725","year":2025,"month":9,"label":"Sep '25","campaign_type":"Competitor","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":52,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_080125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":39,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":225,"sql":62},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":224,"sql":71},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_042325","year":2025,"month":9,"label":"Sep '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":5,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_082725","year":2025,"month":9,"label":"Sep '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":136,"sql":14},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_080125","year":2025,"month":9,"label":"Sep '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":51,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":432,"sql":86},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":9,"label":"Sep '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":404,"sql":82},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_California","year":2025,"month":10,"label":"Oct '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GlofoxBranded_WW","year":2025,"month":10,"label":"Oct '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_WW","year":2025,"month":10,"label":"Oct '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":3},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":20,"sql":9},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":39,"sql":13},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmtTopTerms_WW_081125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":8,"sql":2},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_NA_Tier1_102925","year":2025,"month":10,"label":"Oct '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":111,"sql":16},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":24,"sql":4},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_APAC_082725","year":2025,"month":10,"label":"Oct '25","campaign_type":"Branded","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":37,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_080125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":33,"sql":12},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":93,"sql":37},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_Test_101625","year":2025,"month":10,"label":"Oct '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":13,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":122,"sql":56},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_APAC_082725","year":2025,"month":10,"label":"Oct '25","campaign_type":"Competitor","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":39,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_080125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":28,"sql":4},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":184,"sql":59},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":139,"sql":40},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_042325","year":2025,"month":10,"label":"Oct '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_082725","year":2025,"month":10,"label":"Oct '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":112,"sql":15},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_080125","year":2025,"month":10,"label":"Oct '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":53,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_NA_Tier1_062625","year":2025,"month":10,"label":"Oct '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":14,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":330,"sql":71},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":10,"label":"Oct '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":314,"sql":71},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_California","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":4},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_California","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":3},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":33,"sql":11},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmtTopTerms_WW_081125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_NA_Tier1_102925","year":2025,"month":11,"label":"Nov '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":33,"sql":4},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":54,"sql":11},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":12,"sql":4},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_SoftwareAdvice_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_DG_Prospecting_Black_Friday_111425","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":100,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_DG_Retargeting_Black_Friday_111425","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"Global","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":18,"sql":3},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_APAC_082725","year":2025,"month":11,"label":"Nov '25","campaign_type":"Branded","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":46,"sql":16},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_080125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":22,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":51,"sql":18},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_Test_101625","year":2025,"month":11,"label":"Nov '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":63,"sql":20},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":108,"sql":42},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_APAC_082725","year":2025,"month":11,"label":"Nov '25","campaign_type":"Competitor","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":29,"sql":5},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_080125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":23,"sql":5},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":125,"sql":43},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":121,"sql":18},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_042325","year":2025,"month":11,"label":"Nov '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_082725","year":2025,"month":11,"label":"Nov '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":91,"sql":11},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_080125","year":2025,"month":11,"label":"Nov '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":56,"sql":12},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_NA_Tier1_062625","year":2025,"month":11,"label":"Nov '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":28,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":363,"sql":64},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":11,"label":"Nov '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":277,"sql":54},{"campaign_name":"SMB_Inbound_Reddit_PPC_SM_WebTraffic_GymOwners_USA_103125","year":2025,"month":11,"label":"Nov '25","campaign_type":"Other","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":0},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_California","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_WW","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_USA_121825","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":5,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":37,"sql":4},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_NA_Tier1_102925","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":8,"sql":3},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_USA_120225","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":119,"sql":9},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":2},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":5,"sql":0},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":13,"sql":1},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":0},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":1},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_SoftwareAdvice_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_USA_120825","year":2025,"month":12,"label":"Dec '25","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_Web_USA_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_Web_USA_122325","year":2025,"month":12,"label":"Dec '25","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_DG_Prospecting_Black_Friday_111425","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_APAC_082725","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":33,"sql":10},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_080125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":15,"sql":4},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":16,"sql":3},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_Test_101625","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":78,"sql":28},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":98,"sql":39},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_APAC_082725","year":2025,"month":12,"label":"Dec '25","campaign_type":"Competitor","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":32,"sql":6},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_080125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":18,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":149,"sql":36},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":77,"sql":22},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_042325","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_APAC_082725","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":87,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_080125","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":38,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_NA_Tier1_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_NA_Tier1_062625","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":36,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":349,"sql":50},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":10,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":217,"sql":39},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Prospect_UK_122325","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"EMEA","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":10,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Prospect_US_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Prospect_US_122325","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Retargeting_UK_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"EMEA","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Retargeting_UK_122325","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"EMEA","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Retargeting_US_010126","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Retargeting_US_122325","year":2025,"month":12,"label":"Dec '25","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":9,"sql":0},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GlofoxBranded_WW","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_USA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":8,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010125","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":14,"sql":3},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2026,"month":1,"label":"Jan '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":43,"sql":11},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_USA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":39,"sql":7},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":61,"sql":3},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":0},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":1},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_Leads_Web_UK_010626","year":2026,"month":1,"label":"Jan '26","campaign_type":"Modality","region":"EMEA","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":37,"sql":4},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_USA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_Web_USA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":89,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_DG_Retargeting_US_011426","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"Global","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_APAC_082725","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":24,"sql":9},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_080125","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":134,"sql":41},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_Test_101625","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":9},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":133,"sql":33},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_APAC_082725","year":2026,"month":1,"label":"Jan '26","campaign_type":"Competitor","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":35,"sql":7},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2026,"month":1,"label":"Jan '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":10},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":199,"sql":45},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2026,"month":1,"label":"Jan '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":127,"sql":32},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":47,"sql":4},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_080125","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_NA_Tier1_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":48,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":11},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":381,"sql":35},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":11},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":237,"sql":40},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Prospect_UK_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"EMEA","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":5,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Prospect_US_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":14,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Retargeting_UK_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"EMEA","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":10,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Retargeting_UK_122325","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"EMEA","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_PMax_Retargeting_US_010126","year":2026,"month":1,"label":"Jan '26","campaign_type":"Other","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":29,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_California","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":2},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_WW","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Capterra_Fitness","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":18,"sql":4},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010125","year":2026,"month":2,"label":"Feb '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":41,"sql":10},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_USA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":46,"sql":3},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_USA_120225","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010125","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":2},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":22,"sql":2},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Modality_WW_021126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":1},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":6,"sql":1},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_GetApp_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_SoftwareAdvice_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_Leads_Web_UK_010626","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"EMEA","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_USA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":22,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_USA_120825","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_Web_USA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":63,"sql":3},{"campaign_name":"SMB_Inbound_Google_PPC_DG_Prospecting_US_011426","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_DG_Retargeting_US_011426","year":2026,"month":2,"label":"Feb '26","campaign_type":"Other","region":"Global","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_APAC_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Branded","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":37,"sql":12},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":20,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2026,"month":2,"label":"Feb '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":4},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":107,"sql":32},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_Test_101625","year":2026,"month":2,"label":"Feb '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2026,"month":2,"label":"Feb '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":6},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":113,"sql":31},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":15,"sql":4},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_080125","year":2026,"month":2,"label":"Feb '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2026,"month":2,"label":"Feb '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":12},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":165,"sql":31},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2026,"month":2,"label":"Feb '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":3,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":139,"sql":38},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":34,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_080125","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":12},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":280,"sql":22},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":11},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010126","year":2026,"month":2,"label":"Feb '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":238,"sql":34},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Modality_APAC_022626","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Modality_CA_021726","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Modality_USA_020526","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":53,"sql":13},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Modality_WW_020626","year":2026,"month":2,"label":"Feb '26","campaign_type":"Modality","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":39,"sql":5},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_California","year":2026,"month":3,"label":"Mar '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_CompetitorBrands_WW","year":2026,"month":3,"label":"Mar '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"GF_23_PPC_Adwords_GymManagementSoftware_WW","year":2026,"month":3,"label":"Mar '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Branded_WW_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Competitor_WW_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":9,"sql":4},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_USA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_GymMgmt_WW_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":23,"sql":1},{"campaign_name":"SMB_Inbound_Bing_PPC_SEM_Modality_WW_021126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Modality","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":1},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010125","year":2026,"month":3,"label":"Mar '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Capterra_PPC_LIS_Capterra_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Other","region":"Global","channel":"Other","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":1},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_USA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":9,"sql":0},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_USA_120825","year":2026,"month":3,"label":"Mar '26","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":1},{"campaign_name":"SMB_Inbound_Facebook_PPC_SM_Modality_Web_USA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Modality","region":"NAM","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":19,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_DG_Prospecting_US_011426","year":2026,"month":3,"label":"Mar '26","campaign_type":"Other","region":"Global","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_DG_Retargeting_US_011426","year":2026,"month":3,"label":"Mar '26","campaign_type":"Other","region":"Global","channel":"Paid Other","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_APAC_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Branded","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":3},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_CA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":7,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010125","year":2026,"month":3,"label":"Mar '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_USA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Branded","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":21,"sql":9},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010125","year":2026,"month":3,"label":"Mar '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Branded_WW_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Branded","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":36,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_CA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":9,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010125","year":2026,"month":3,"label":"Mar '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":3},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_USA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Competitor","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":40,"sql":6},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010125","year":2026,"month":3,"label":"Mar '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":0,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Competitor_WW_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"Competitor","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":28,"sql":8},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_CA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":19,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125","year":2026,"month":3,"label":"Mar '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"GymManagement","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":69,"sql":5},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125","year":2026,"month":3,"label":"Mar '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":1,"sql":1},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010126","year":2026,"month":3,"label":"Mar '26","campaign_type":"GymManagement","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":71,"sql":4},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Modality_APAC_022626","year":2026,"month":3,"label":"Mar '26","campaign_type":"Modality","region":"APAC","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":4,"sql":0},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Modality_CA_021726","year":2026,"month":3,"label":"Mar '26","campaign_type":"Modality","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":2,"sql":2},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Modality_USA_020526","year":2026,"month":3,"label":"Mar '26","campaign_type":"Modality","region":"NAM","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":23,"sql":6},{"campaign_name":"SMB_Inbound_Google_PPC_SEM_Modality_WW_020626","year":2026,"month":3,"label":"Mar '26","campaign_type":"Modality","region":"Global","channel":"Paid Search","impressions":0,"clicks":0,"cost":0.0,"mql":15,"sql":4}],"monthly_kpis":[{"year":2024,"month":1,"label":"Jan '24","spend":381801.5737,"mql":2017,"sql":833,"mql_sql_rate":0.4129895885,"cw":91,"cp_mql":189.2918065,"cp_sql":458.3452265,"cac":4195.621689},{"year":2024,"month":2,"label":"Feb '24","spend":244367.0872,"mql":1733,"sql":718,"mql_sql_rate":0.4143104443,"cw":134,"cp_mql":141.0081288,"cp_sql":340.3441325,"cac":1823.634979},{"year":2024,"month":3,"label":"Mar '24","spend":275550.5425,"mql":1986,"sql":686,"mql_sql_rate":0.3454179255,"cw":140,"cp_mql":138.7464967,"cp_sql":401.6771756,"cac":1968.218161},{"year":2024,"month":4,"label":"Apr '24","spend":264167.3757,"mql":1771,"sql":688,"mql_sql_rate":0.3884810841,"cw":105,"cp_mql":149.1628321,"cp_sql":383.9642088,"cac":2515.879768},{"year":2024,"month":5,"label":"May '24","spend":282023.4646,"mql":1700,"sql":570,"mql_sql_rate":0.3352941176,"cw":130,"cp_mql":165.8961557,"cp_sql":494.7780081,"cac":2169.411266},{"year":2024,"month":6,"label":"Jun '24","spend":283163.9116,"mql":1719,"sql":569,"mql_sql_rate":0.3310063991,"cw":113,"cp_mql":164.7259521,"cp_sql":497.6518658,"cac":2505.875324},{"year":2024,"month":7,"label":"Jul '24","spend":334001.6332,"mql":1870,"sql":599,"mql_sql_rate":0.3203208556,"cw":116,"cp_mql":178.610499,"cp_sql":557.5987199,"cac":2879.324424},{"year":2024,"month":8,"label":"Aug '24","spend":341990.982,"mql":2007,"sql":740,"mql_sql_rate":0.3687095167,"cw":136,"cp_mql":170.3990942,"cp_sql":462.1499756,"cac":2514.639573},{"year":2024,"month":9,"label":"Sep '24","spend":355655.2949,"mql":1955,"sql":658,"mql_sql_rate":0.33657289,"cw":55,"cp_mql":181.920867,"cp_sql":540.5095668,"cac":6466.459908},{"year":2024,"month":10,"label":"Oct '24","spend":470953.6567,"mql":2083,"sql":722,"mql_sql_rate":0.3466154585,"cw":0,"cp_mql":226.0939303,"cp_sql":652.2903833,"cac":0.0},{"year":2024,"month":11,"label":"Nov '24","spend":411894.3316,"mql":1950,"sql":642,"mql_sql_rate":0.3292307692,"cw":0,"cp_mql":211.2278624,"cp_sql":641.5799558,"cac":0.0},{"year":2024,"month":12,"label":"Dec '24","spend":332282.9725,"mql":1742,"sql":540,"mql_sql_rate":0.3099885189,"cw":0,"cp_mql":190.747975,"cp_sql":615.338838,"cac":0.0},{"year":2025,"month":1,"label":"Jan '25","spend":504167.0323,"mql":2832,"sql":840,"mql_sql_rate":0.2966101695,"cw":143,"cp_mql":178.025082,"cp_sql":600.1988479,"cac":3525.643582},{"year":2025,"month":2,"label":"Feb '25","spend":392480.033,"mql":2583,"sql":711,"mql_sql_rate":0.275261324,"cw":139,"cp_mql":151.9473608,"cp_sql":552.0112982,"cac":2823.59736},{"year":2025,"month":3,"label":"Mar '25","spend":374522.1961,"mql":2503,"sql":732,"mql_sql_rate":0.2924490611,"cw":147,"cp_mql":149.6293233,"cp_sql":511.6423444,"cac":2547.770042},{"year":2025,"month":4,"label":"Apr '25","spend":402549.307,"mql":2456,"sql":762,"mql_sql_rate":0.3102605863,"cw":123,"cp_mql":163.904441,"cp_sql":528.2799304,"cac":3272.758593},{"year":2025,"month":5,"label":"May '25","spend":496482.436,"mql":2629,"sql":759,"mql_sql_rate":0.2887029289,"cw":143,"cp_mql":188.8483971,"cp_sql":654.1270567,"cac":3471.905147},{"year":2025,"month":6,"label":"Jun '25","spend":440533.1265,"mql":2350,"sql":676,"mql_sql_rate":0.2876595745,"cw":151,"cp_mql":187.4609049,"cp_sql":651.6762227,"cac":2917.437924},{"year":2025,"month":7,"label":"Jul '25","spend":410186.3858,"mql":2371,"sql":690,"mql_sql_rate":0.2910164488,"cw":150,"cp_mql":173.001428,"cp_sql":594.4730228,"cac":2734.575905},{"year":2025,"month":8,"label":"Aug '25","spend":382757.5253,"mql":2355,"sql":643,"mql_sql_rate":0.2730360934,"cw":131,"cp_mql":162.5297347,"cp_sql":595.268313,"cac":2921.81317},{"year":2025,"month":9,"label":"Sep '25","spend":425477.8452,"mql":2541,"sql":687,"mql_sql_rate":0.2703659976,"cw":124,"cp_mql":167.4450394,"cp_sql":619.3272856,"cac":3431.272945},{"year":2025,"month":10,"label":"Oct '25","spend":399343.9407,"mql":2202,"sql":615,"mql_sql_rate":0.2792915531,"cw":95,"cp_mql":181.3551048,"cp_sql":649.339741,"cac":4203.620429},{"year":2025,"month":11,"label":"Nov '25","spend":428938.376,"mql":2095,"sql":495,"mql_sql_rate":0.2362768496,"cw":123,"cp_mql":204.7438549,"cp_sql":866.5421738,"cac":3487.30387},{"year":2025,"month":12,"label":"Dec '25","spend":397371.2459,"mql":1868,"sql":387,"mql_sql_rate":0.2071734475,"cw":136,"cp_mql":212.7255063,"cp_sql":1026.799085,"cac":2921.847396},{"year":2026,"month":1,"label":"Jan '26","spend":454203.68,"mql":2299,"sql":459,"mql_sql_rate":0.1996520226,"cw":85,"cp_mql":197.565759,"cp_sql":989.5505012,"cac":5343.572706},{"year":2026,"month":2,"label":"Feb '26","spend":435959.4926,"mql":2040,"sql":432,"mql_sql_rate":0.2117647059,"cw":105,"cp_mql":213.7056336,"cp_sql":1009.165492,"cac":4151.995167},{"year":2026,"month":3,"label":"Mar '26","spend":132645.6185,"mql":561,"sql":103,"mql_sql_rate":0.183600713,"cw":12,"cp_mql":236.4449528,"cp_sql":1287.821539,"cac":11053.80154}]};</script>
+
+<header class="header">
+  <div>
+    <h1>Glofox Paid Media Dashboard</h1>
+    <div class="meta" id="meta-line">Loading…</div>
+  </div>
+  <div class="logo">GF</div>
+</header>
+
+<div class="container">
+
+  <!-- Period filter -->
+  <div class="period-bar">
+    <span>Period:</span>
+    <button class="period-btn" data-period="1">Last 1M</button>
+    <button class="period-btn active" data-period="3">Last 3M</button>
+    <button class="period-btn" data-period="6">Last 6M</button>
+    <button class="period-btn" data-period="ytd">YTD</button>
+  </div>
+
+  <!-- KPI bar -->
+  <div class="kpi-grid" id="kpi-grid"></div>
+
+  <!-- Full funnel by campaign type -->
+  <div class="section">
+    <div class="section-title">
+      Full Funnel by Campaign Type
+      <span class="badge">Google &amp; Bing PPC</span>
+    </div>
+    <div class="table-wrap">
+      <table id="table-type">
+        <thead>
+          <tr>
+            <th>Campaign Type</th>
+            <th>Impressions</th>
+            <th>Clicks</th>
+            <th>CTR</th>
+            <th>Cost</th>
+            <th>MQL</th>
+            <th>Impr→MQL%</th>
+            <th>SQL</th>
+            <th>MQL→SQL%</th>
+            <th>Cost/MQL</th>
+            <th>Cost/SQL</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-type"></tbody>
+        <tfoot id="tfoot-type"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Full funnel by region -->
+  <div class="section">
+    <div class="section-title">
+      Full Funnel by Region
+      <span class="badge">NAM · EMEA · APAC · Global</span>
+    </div>
+    <div class="table-wrap">
+      <table id="table-region">
+        <thead>
+          <tr>
+            <th>Region</th>
+            <th>Impressions</th>
+            <th>Clicks</th>
+            <th>CTR</th>
+            <th>Cost</th>
+            <th>MQL</th>
+            <th>Impr→MQL%</th>
+            <th>SQL</th>
+            <th>MQL→SQL%</th>
+            <th>Cost/MQL</th>
+            <th>Cost/SQL</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-region"></tbody>
+        <tfoot id="tfoot-region"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Paid Search vs Paid Other -->
+  <div class="section">
+    <div class="section-title">
+      Paid Search vs. Paid Other — MQL:SQL Comparison
+    </div>
+    <div class="compare-grid">
+      <div class="compare-card" id="card-search"></div>
+      <div class="compare-card" id="card-other"></div>
+    </div>
+    <div style="margin-top:16px; background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
+      <canvas id="chart-compare" height="80"></canvas>
+    </div>
+  </div>
+
+  <div class="footer-note" id="footer-note"></div>
+
+</div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const D = window.DASHBOARD_DATA;
+
+function fmt$  (n) { return n >= 1000 ? '$' + (n/1000).toFixed(1) + 'k' : '$' + n.toFixed(0); }
+function fmtN  (n) { return n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n); }
+function fmtPct(r) { return (r*100).toFixed(1) + '%'; }
+function fmtPctRaw(r) { return r.toFixed(1) + '%'; }  // already a pct value
+function div   (a,b){ return b > 0 ? a / b : 0; }
+
+function rateClass(r) {
+  // MQL→SQL: hi >30%, mid 15-30%, lo <15%
+  if (r >= 0.30) return 'rate-hi';
+  if (r >= 0.15) return 'rate-mid';
+  return 'rate-lo';
+}
+
+// ── Period filtering ──────────────────────────────────────────────────────────
+function maxYM(rows) {
+  let year = 0, month = 0;
+  for (const r of rows) {
+    if (r.year > year || (r.year === year && r.month > month)) {
+      year = r.year; month = r.month;
+    }
+  }
+  return { year, month };
+}
+
+function filterByPeriod(rows, period) {
+  if (!rows.length) return rows;
+  const { year: maxY, month: maxM } = maxYM(rows);
+  // Determine how many months back
+  let cutoffYear, cutoffMonth;
+  if (period === 'ytd') {
+    cutoffYear = maxY; cutoffMonth = 1;
+  } else {
+    const totalMonths = maxY * 12 + maxM - Number(period);
+    cutoffYear = Math.floor(totalMonths / 12);
+    cutoffMonth = totalMonths % 12 + 1;
+    if (cutoffMonth === 0) { cutoffMonth = 12; cutoffYear--; }
+  }
+  return rows.filter(r =>
+    r.year > cutoffYear || (r.year === cutoffYear && r.month >= cutoffMonth)
+  );
+}
+
+// ── Aggregation ───────────────────────────────────────────────────────────────
+function aggregate(rows, groupKey) {
+  const groups = {};
+  for (const r of rows) {
+    const k = r[groupKey] || 'Unknown';
+    if (!groups[k]) groups[k] = { impressions:0, clicks:0, cost:0, mql:0, sql:0 };
+    const g = groups[k];
+    g.impressions += r.impressions;
+    g.clicks      += r.clicks;
+    g.cost        += r.cost;
+    g.mql         += r.mql;
+    g.sql         += r.sql;
+  }
+  return groups;
+}
+
+function totals(groups) {
+  const t = { impressions:0, clicks:0, cost:0, mql:0, sql:0 };
+  for (const g of Object.values(groups)) {
+    t.impressions += g.impressions;
+    t.clicks      += g.clicks;
+    t.cost        += g.cost;
+    t.mql         += g.mql;
+    t.sql         += g.sql;
+  }
+  return t;
+}
+
+// ── Table rendering ───────────────────────────────────────────────────────────
+const TYPE_ORDER   = ['GymManagement', 'Modality', 'Branded', 'Competitor', 'Other'];
+const REGION_ORDER = ['NAM', 'EMEA', 'APAC', 'Global'];
+
+function renderFunnelRow(label, g) {
+  const ctr     = div(g.clicks, g.impressions);
+  const imprMql = div(g.mql, g.impressions);
+  const mqlSql  = div(g.sql, g.mql);
+  const cpMql   = div(g.cost, g.mql);
+  const cpSql   = div(g.cost, g.sql);
+  return `
+    <tr>
+      <td>${label}</td>
+      <td>${fmtN(g.impressions)}</td>
+      <td>${fmtN(g.clicks)}</td>
+      <td>${fmtPct(ctr)}</td>
+      <td>${fmt$(g.cost)}</td>
+      <td>${fmtN(g.mql)}</td>
+      <td>${fmtPct(imprMql)}</td>
+      <td>${fmtN(g.sql)}</td>
+      <td class="${rateClass(mqlSql)}">${fmtPct(mqlSql)}</td>
+      <td>${g.mql > 0 ? fmt$(cpMql) : '—'}</td>
+      <td>${g.sql > 0 ? fmt$(cpSql) : '—'}</td>
+    </tr>`;
+}
+
+function renderFunnelTable(tbodyId, tfootId, groups, order) {
+  const tbody = document.getElementById(tbodyId);
+  const tfoot = document.getElementById(tfootId);
+  const keys = order.filter(k => groups[k]);
+  // Add any unordered keys
+  for (const k of Object.keys(groups)) {
+    if (!keys.includes(k)) keys.push(k);
+  }
+  if (!keys.length) { tbody.innerHTML = '<tr><td colspan="11" class="empty">No data for this period.</td></tr>'; return; }
+
+  tbody.innerHTML = keys.map(k => renderFunnelRow(k, groups[k])).join('');
+
+  const t = totals(groups);
+  const ctr    = div(t.clicks, t.impressions);
+  const imrMql = div(t.mql, t.impressions);
+  const mqlSql = div(t.sql, t.mql);
+  const cpMql  = div(t.cost, t.mql);
+  const cpSql  = div(t.cost, t.sql);
+  tfoot.innerHTML = `
+    <tr class="tfoot-row">
+      <td>Total</td>
+      <td>${fmtN(t.impressions)}</td>
+      <td>${fmtN(t.clicks)}</td>
+      <td>${fmtPct(ctr)}</td>
+      <td>${fmt$(t.cost)}</td>
+      <td>${fmtN(t.mql)}</td>
+      <td>${fmtPct(imrMql)}</td>
+      <td>${fmtN(t.sql)}</td>
+      <td class="${rateClass(mqlSql)}">${fmtPct(mqlSql)}</td>
+      <td>${t.mql > 0 ? fmt$(cpMql) : '—'}</td>
+      <td>${t.sql > 0 ? fmt$(cpSql) : '—'}</td>
+    </tr>`;
+}
+
+// ── KPI bar ───────────────────────────────────────────────────────────────────
+function renderKpis(kpiRows) {
+  if (!kpiRows.length) { document.getElementById('kpi-grid').innerHTML = '<p class="empty">No KPI data.</p>'; return; }
+  const t = kpiRows.reduce((acc, r) => {
+    acc.spend  += r.spend;
+    acc.mql    += r.mql;
+    acc.sql    += r.sql;
+    acc.cw     += r.cw;
+    return acc;
+  }, { spend:0, mql:0, sql:0, cw:0 });
+
+  const mqlSql = div(t.sql, t.mql);
+  const cpMql  = div(t.spend, t.mql);
+  const cpSql  = div(t.spend, t.sql);
+
+  const cards = [
+    { label: 'Total Spend',   value: fmt$(t.spend),         sub: 'Paid media cost' },
+    { label: 'MQL',           value: fmtN(t.mql),           sub: 'Mktg qualified leads' },
+    { label: 'SQL',           value: fmtN(t.sql),           sub: 'Sales qualified leads' },
+    { label: 'MQL → SQL',     value: fmtPct(mqlSql),        sub: 'Conversion rate' },
+    { label: 'Cost / MQL',    value: fmt$(cpMql),           sub: 'Avg across all paid' },
+    { label: 'Cost / SQL',    value: fmt$(cpSql),           sub: 'Avg across all paid' },
+  ];
+  document.getElementById('kpi-grid').innerHTML = cards.map(c => `
+    <div class="kpi-card">
+      <div class="kpi-label">${c.label}</div>
+      <div class="kpi-value">${c.value}</div>
+      <div class="kpi-sub">${c.sub}</div>
+    </div>`).join('');
+}
+
+// ── Comparison cards ──────────────────────────────────────────────────────────
+let compareChart = null;
+
+function renderCompareCard(cardId, label, def, g) {
+  const mqlSql = div(g.sql, g.mql);
+  const cpMql  = div(g.cost, g.mql);
+  const cpSql  = div(g.cost, g.sql);
+  document.getElementById(cardId).innerHTML = `
+    <h3>${label}</h3>
+    <div class="cc-def">${def}</div>
+    <div class="cc-metrics">
+      <div class="cc-metric">
+        <div class="cc-label">Clicks</div>
+        <div class="cc-val">${fmtN(g.clicks)}</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">MQL</div>
+        <div class="cc-val">${fmtN(g.mql)}</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">SQL</div>
+        <div class="cc-val">${fmtN(g.sql)}</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">MQL→SQL</div>
+        <div class="cc-val ${rateClass(mqlSql)}">${fmtPct(mqlSql)}</div>
+        <div class="cc-sub">conversion rate</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">Cost/MQL</div>
+        <div class="cc-val">${g.mql > 0 ? fmt$(cpMql) : '—'}</div>
+      </div>
+      <div class="cc-metric">
+        <div class="cc-label">Cost/SQL</div>
+        <div class="cc-val">${g.sql > 0 ? fmt$(cpSql) : '—'}</div>
+      </div>
+    </div>`;
+}
+
+function renderCompareChart(search, other) {
+  if (compareChart) { compareChart.destroy(); compareChart = null; }
+  const ctx = document.getElementById('chart-compare').getContext('2d');
+  const labels = ['Clicks', 'MQL', 'SQL'];
+  compareChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Paid Search',
+          data: [search.clicks, search.mql, search.sql],
+          backgroundColor: '#3B82F6',
+          borderRadius: 4,
+        },
+        {
+          label: 'Paid Other',
+          data: [other.clicks, other.mql, other.sql],
+          backgroundColor: '#F59E0B',
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 12 }, padding: 16 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { font: { size: 12 } }, grid: { color: '#F1F5F9' } },
+        x: { ticks: { font: { size: 12 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+function render(period) {
+  const filteredCampaigns = filterByPeriod(D.campaigns, period);
+  const filteredKpis      = filterByPeriod(D.monthly_kpis, period);
+
+  // KPI bar
+  renderKpis(filteredKpis);
+
+  // Campaign type table
+  const byType = aggregate(filteredCampaigns, 'campaign_type');
+  renderFunnelTable('tbody-type', 'tfoot-type', byType, TYPE_ORDER);
+
+  // Region table
+  const byRegion = aggregate(filteredCampaigns, 'region');
+  renderFunnelTable('tbody-region', 'tfoot-region', byRegion, REGION_ORDER);
+
+  // Paid Search vs Paid Other
+  const empty = { impressions:0, clicks:0, cost:0, mql:0, sql:0 };
+  const byChannel = aggregate(filteredCampaigns, 'channel');
+  const search = byChannel['Paid Search'] || { ...empty };
+  const pother = byChannel['Paid Other']  || { ...empty };
+
+  renderCompareCard(
+    'card-search', 'Paid Search',
+    'Google &amp; Bing SEM campaigns',
+    search
+  );
+  renderCompareCard(
+    'card-other', 'Paid Other',
+    'Facebook, Display &amp; Demand Gen campaigns',
+    pother
+  );
+  renderCompareChart(search, pother);
+}
+
+// ── Period button wiring ──────────────────────────────────────────────────────
+let activePeriod = 3;
+
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activePeriod = btn.dataset.period === 'ytd' ? 'ytd' : Number(btn.dataset.period);
+    render(activePeriod);
+  });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.getElementById('meta-line').textContent =
+  'Last updated: ' + D.generated_at + '  ·  Data source: Google Ads API + Looker';
+
+document.getElementById('footer-note').innerHTML =
+  'Paid Search = Google &amp; Bing SEM campaigns  ·  ' +
+  'Paid Other = Facebook, Display &amp; Demand Gen  ·  ' +
+  'Closed/Won shown at aggregate level only (not available per campaign)  ·  ' +
+  'Generated: ' + D.generated_at;
+
+render(activePeriod);
+</script>
+</body>
+</html>
