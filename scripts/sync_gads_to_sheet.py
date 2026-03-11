@@ -38,6 +38,7 @@ from googleapiclient.discovery import build
 
 SHEET_ID = "1-M1R5RfWkQiQKvVnclI4d0KpSC1Ww042iCUv6IFe6mc"
 GADS_TAB = "GadsData"
+ADGROUP_TAB = "AdGroupData"
 GLOFOX_CUSTOMER_ID = "6129012053"
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -139,6 +140,51 @@ def fetch_gads_monthly(client: GoogleAdsClient, months: int) -> list[dict]:
     return rows
 
 
+def fetch_adgroup_monthly(client: GoogleAdsClient, months: int) -> list[dict]:
+    """
+    Fetch Google Ads ad group performance segmented by calendar month.
+
+    Returns:
+        List of dicts: campaign_name, adgroup_name, year, month, impressions, clicks, cost
+    """
+    start = months_ago_start(months)
+    end = date.today()
+
+    ga_service = client.get_service("GoogleAdsService")
+
+    query = f"""
+        SELECT
+            campaign.name,
+            ad_group.name,
+            segments.year,
+            segments.month,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros
+        FROM ad_group
+        WHERE segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'
+            AND campaign.status != 'REMOVED'
+            AND ad_group.status != 'REMOVED'
+        ORDER BY campaign.name, ad_group.name, segments.year, segments.month
+    """
+
+    response = ga_service.search(customer_id=GLOFOX_CUSTOMER_ID, query=query)
+
+    rows = []
+    for row in response:
+        rows.append({
+            "campaign_name": row.campaign.name,
+            "adgroup_name": row.ad_group.name,
+            "year": row.segments.year,
+            "month": row.segments.month,
+            "impressions": row.metrics.impressions,
+            "clicks": row.metrics.clicks,
+            "cost": round(micros_to_currency(row.metrics.cost_micros), 2),
+        })
+
+    return rows
+
+
 # ── Google Sheet write ────────────────────────────────────────────────────────
 
 def ensure_tab_exists(service, tab_name: str) -> None:
@@ -189,6 +235,41 @@ def write_to_sheet(service, rows: list[dict]) -> None:
     print(f"  Written {len(rows)} data rows to '{GADS_TAB}' tab.")
 
 
+def write_adgroup_to_sheet(service, rows: list[dict]) -> None:
+    """Clear AdGroupData tab and write fresh ad group data with headers."""
+    sheets = service.spreadsheets()
+
+    ensure_tab_exists(service, ADGROUP_TAB)
+
+    sheets.values().clear(
+        spreadsheetId=SHEET_ID,
+        range=f"{ADGROUP_TAB}!A:G",
+    ).execute()
+
+    headers = ["Campaign", "Ad Group", "Year", "Month", "Impressions", "Clicks", "Cost"]
+    values = [headers] + [
+        [
+            r["campaign_name"],
+            r["adgroup_name"],
+            r["year"],
+            r["month"],
+            r["impressions"],
+            r["clicks"],
+            r["cost"],
+        ]
+        for r in rows
+    ]
+
+    sheets.values().update(
+        spreadsheetId=SHEET_ID,
+        range=f"{ADGROUP_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": values},
+    ).execute()
+
+    print(f"  Written {len(rows)} data rows to '{ADGROUP_TAB}' tab.")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -210,15 +291,20 @@ def main():
               "GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_CUSTOMER_ID")
         raise
 
-    print(f"[2/3] Fetching last {args.months} months of campaign data from Google Ads...")
+    print(f"[2/4] Fetching last {args.months} months of campaign data from Google Ads...")
     rows = fetch_gads_monthly(gads_client, args.months)
     print(f"  Retrieved {len(rows)} campaign-month rows.")
 
-    print(f"[3/3] Writing to Google Sheet (tab: {GADS_TAB})...")
+    print(f"[3/4] Fetching last {args.months} months of ad group data from Google Ads...")
+    ag_rows = fetch_adgroup_monthly(gads_client, args.months)
+    print(f"  Retrieved {len(ag_rows)} ad group-month rows.")
+
+    print(f"[4/4] Writing to Google Sheet...")
     sheets_service = get_sheets_service()
     write_to_sheet(sheets_service, rows)
+    write_adgroup_to_sheet(sheets_service, ag_rows)
 
-    print("\nDone! GadsData tab is up to date.")
+    print("\nDone! GadsData and AdGroupData tabs are up to date.")
 
 
 if __name__ == "__main__":

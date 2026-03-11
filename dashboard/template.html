@@ -120,6 +120,27 @@
     padding-top: 16px; border-top: 1px solid #E2E8F0; text-align: center;
   }
   .empty { padding: 32px; text-align: center; color: #94A3B8; font-size: 13px; }
+
+  /* ── Tabs ── */
+  .tab-nav { display:flex; gap:2px; margin-bottom:20px; border-bottom:2px solid #E2E8F0; }
+  .tab-btn {
+    padding:8px 20px; font-size:13px; font-weight:600; color:#64748B;
+    background:none; border:none; cursor:pointer;
+    border-bottom:3px solid transparent; margin-bottom:-2px; transition:all .15s;
+  }
+  .tab-btn:hover { color:#1E293B; }
+  .tab-btn.active { color:#3B82F6; border-bottom-color:#3B82F6; }
+
+  /* ── Ad group table ── */
+  .search-bar { margin-bottom:14px; }
+  .search-input {
+    width:100%; max-width:380px; padding:7px 12px; border:1.5px solid #CBD5E1;
+    border-radius:6px; font-size:13px; color:#1E293B; outline:none; background:#fff;
+  }
+  .search-input:focus { border-color:#3B82F6; }
+  .ag-campaign-start td { border-top:2px solid #E2E8F0 !important; background:#F8FAFC; }
+  .ag-campaign-cell { font-weight:700 !important; color:#1E293B !important; line-height:1.4; }
+  .ag-type-badge { font-size:11px; font-weight:500; color:#94A3B8; }
 </style>
 </head>
 <body>
@@ -149,6 +170,15 @@
     <span class="bar-label">To:</span>
     <select id="sel-to" class="month-sel"></select>
   </div>
+
+  <!-- Tab navigation -->
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="adgroups">Ad Groups</button>
+  </div>
+
+  <!-- Overview tab -->
+  <div id="tab-overview">
 
   <!-- KPI bar -->
   <div class="kpi-grid" id="kpi-grid"></div>
@@ -214,6 +244,30 @@
       <canvas id="chart-compare" height="80"></canvas>
     </div>
   </div>
+
+  </div><!-- /tab-overview -->
+
+  <!-- Ad Groups tab -->
+  <div id="tab-adgroups" style="display:none">
+    <div class="section">
+      <div class="section-title">
+        Ad Group Performance
+        <span class="badge">Google Ads · Cost · Traffic</span>
+      </div>
+      <div class="search-bar">
+        <input id="ag-search" class="search-input" type="text" placeholder="Search campaign or ad group…">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Campaign</th><th style="text-align:left">Ad Group</th>
+            <th>Cost</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>CPC</th>
+          </tr></thead>
+          <tbody id="tbody-adgroups"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-adgroups -->
 
   <div class="footer-note" id="footer-note"></div>
 </div>
@@ -419,8 +473,63 @@ function renderCompareChart(search, other) {
   });
 }
 
+// ── Ad Groups tab ─────────────────────────────────────────────────────────────
+function aggregateAdGroups(fromYM, toYM, searchQ) {
+  const q = searchQ.trim().toLowerCase();
+  const byKey = {};
+  for (const r of (D.adgroups || [])) {
+    const ym = ymKey(r);
+    if (ym < fromYM || ym > toYM) continue;
+    if (q && !r.campaign.toLowerCase().includes(q) && !r.adgroup.toLowerCase().includes(q)) continue;
+    const key = r.campaign + '|||' + r.adgroup;
+    if (!byKey[key]) byKey[key] = {
+      campaign: r.campaign, adgroup: r.adgroup,
+      campaign_type: r.campaign_type, region: r.region,
+      impressions: 0, clicks: 0, cost: 0,
+    };
+    byKey[key].impressions += r.impressions;
+    byKey[key].clicks      += r.clicks;
+    byKey[key].cost        += r.cost;
+  }
+  return Object.values(byKey).sort((a, b) =>
+    a.campaign.localeCompare(b.campaign) || b.cost - a.cost
+  );
+}
+
+function renderAdGroupsTab(fromYM, toYM) {
+  const q = (document.getElementById('ag-search') || {}).value || '';
+  const rows = aggregateAdGroups(fromYM, toYM, q);
+  const tbody = document.getElementById('tbody-adgroups');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">No ad group data for this period.</td></tr>`;
+    return;
+  }
+  let lastCampaign = null;
+  tbody.innerHTML = rows.map(r => {
+    const ctr = div(r.clicks, r.impressions);
+    const cpc = div(r.cost, r.clicks);
+    const isFirst = r.campaign !== lastCampaign;
+    if (isFirst) lastCampaign = r.campaign;
+    const campaignCell = isFirst
+      ? `<td class="ag-campaign-cell">${r.campaign}<br><span class="ag-type-badge">${r.campaign_type} · ${r.region}</span></td>`
+      : `<td></td>`;
+    return `<tr${isFirst ? ' class="ag-campaign-start"' : ''}>
+      ${campaignCell}
+      <td style="text-align:left;color:#1E293B">${r.adgroup}</td>
+      <td>${fmt$(r.cost)}</td>
+      <td>${fmtN(r.impressions)}</td>
+      <td>${fmtN(r.clicks)}</td>
+      <td>${fmtPct(ctr)}</td>
+      <td>${r.clicks > 0 ? fmt$(cpc) : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
 // ── Main render ───────────────────────────────────────────────────────────────
+let lastRange = { fromYM: 0, toYM: 0 };
+
 function render(fromYM, toYM) {
+  lastRange = { fromYM, toYM };
   const fc = filterByRange(D.campaigns,    fromYM, toYM);
   const fk = filterByRange(D.monthly_kpis, fromYM, toYM);
 
@@ -468,6 +577,24 @@ function onCustomRange() {
 }
 selFrom.addEventListener('change', onCustomRange);
 selTo.addEventListener('change',   onCustomRange);
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.tab === tab)
+    );
+    document.getElementById('tab-overview').style.display = tab === 'overview' ? '' : 'none';
+    document.getElementById('tab-adgroups').style.display = tab === 'adgroups' ? '' : 'none';
+    if (tab === 'adgroups') renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
+  });
+});
+
+// Search box re-renders with current range
+document.addEventListener('input', e => {
+  if (e.target.id === 'ag-search') renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
+});
 
 // ── Init (default: Last 3M) ───────────────────────────────────────────────────
 document.getElementById('meta-line').textContent =

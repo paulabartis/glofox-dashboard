@@ -206,6 +206,78 @@ def load_gads_data(service) -> list[dict]:
     return result
 
 
+def parse_adgroup_campaign_name(name: str) -> dict:
+    """
+    Parse Google Ads readable campaign names (e.g. 'Competitor Brands USA').
+    These are different from the Looker-style names used in CampaignsData.
+
+    Returns dict with campaign_type and region.
+    """
+    name_upper = name.upper()
+    words = name.split()
+    last = words[-1].upper() if words else ""
+
+    # Region from last word
+    if last == "APAC":
+        region = "APAC"
+    elif last == "UK":
+        region = "EMEA"
+    elif last in ("USA", "CA"):
+        region = "NAM"
+    elif last == "WW":
+        region = "Global"
+    else:
+        region = "Global"  # default for BF campaigns etc.
+
+    # Campaign type from name content
+    if "COMPETITOR" in name_upper:
+        campaign_type = "Competitor"
+    elif "GYM MANAGEMENT" in name_upper:
+        campaign_type = "GymManagement"
+    elif "MODALITY" in name_upper:
+        campaign_type = "Modality"
+    elif "BRANDED" in name_upper or "GLOFOX" in name_upper:
+        campaign_type = "Branded"
+    elif "PROSPECT" in name_upper or "RETARGET" in name_upper:
+        campaign_type = "Demand Gen"
+    else:
+        campaign_type = "Other"
+
+    return {"campaign_type": campaign_type, "region": region}
+
+
+def load_adgroup_data(service) -> list[dict]:
+    """
+    AdGroupData tab (written by sync_gads_to_sheet.py).
+    Columns: Campaign | Ad Group | Year | Month | Impressions | Clicks | Cost
+
+    Uses parse_adgroup_campaign_name() since Google Ads API returns human-readable
+    names (e.g. 'Competitor Brands USA'), not the Looker naming convention.
+    """
+    rows = read_tab(service, "AdGroupData")
+    result = []
+    for row in rows[1:]:  # skip header
+        if len(row) < 7:
+            continue
+        campaign = str(row[0]).strip()
+        adgroup = str(row[1]).strip()
+        if not campaign or not adgroup:
+            continue
+        meta = parse_adgroup_campaign_name(campaign)
+        result.append({
+            "campaign": campaign,
+            "adgroup": adgroup,
+            "year": safe_int(row[2]),
+            "month": safe_int(row[3]),
+            "impressions": safe_int(row[4]),
+            "clicks": safe_int(row[5]),
+            "cost": safe_float(row[6]),
+            "campaign_type": meta["campaign_type"],
+            "region": meta["region"],
+        })
+    return result
+
+
 def load_campaigns_data(service) -> list[dict]:
     """
     CampaignsData tab.
@@ -397,9 +469,11 @@ def main():
     gads_data = load_gads_data(service)
     campaigns_data = load_campaigns_data(service)
     monthly_summary = load_monthly_summary(service)
+    adgroup_data = load_adgroup_data(service)
     print(f"  GadsData: {len(gads_data)} rows")
     print(f"  CampaignsData (paid PPC): {len(campaigns_data)} rows")
     print(f"  MonthlySummary: {len(monthly_summary)} periods")
+    print(f"  AdGroupData (paid PPC): {len(adgroup_data)} rows")
 
     print("[3/5] Joining and processing data...")
     campaign_rows = build_campaign_rows(gads_data, campaigns_data)
@@ -410,6 +484,7 @@ def main():
         "generated_at": date.today().isoformat(),
         "campaigns": campaign_rows,
         "monthly_kpis": monthly_summary,
+        "adgroups": adgroup_data,
     }
 
     print("[5/5] Rendering HTML...")
@@ -421,6 +496,7 @@ def main():
     print(f"\nDashboard written to: {args.output}")
     print(f"Campaign rows included: {len(campaign_rows)}")
     print(f"Monthly KPI periods: {len(monthly_summary)}")
+    print(f"Ad group rows included: {len(adgroup_data)}")
 
 
 if __name__ == "__main__":
