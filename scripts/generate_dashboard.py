@@ -89,6 +89,23 @@ def safe_int(val: Any) -> int:
     return int(safe_float(val))
 
 
+def parse_month_from_date(val: Any) -> int:
+    """
+    Extract month integer from Google Ads API date field.
+    The Sheets API stores segments.month as a date string e.g. '2025-08-01'.
+    Returns the month as int (1-12), or 0 if unparseable.
+    """
+    s = str(val).strip()
+    # Format: YYYY-MM-DD
+    if len(s) == 10 and s[4] == "-":
+        try:
+            return int(s[5:7])
+        except ValueError:
+            pass
+    # Fallback: try plain integer
+    return safe_int(val)
+
+
 # ── Campaign name parsing ─────────────────────────────────────────────────────
 
 def parse_campaign_meta(name: str) -> dict:
@@ -198,7 +215,7 @@ def load_gads_data(service) -> list[dict]:
         result.append({
             "name": name,
             "year": safe_int(row[1]),
-            "month": safe_int(row[2]),
+            "month": parse_month_from_date(row[2]),
             "impressions": safe_int(row[3]),
             "clicks": safe_int(row[4]),
             "cost": safe_float(row[5]),
@@ -268,7 +285,7 @@ def load_adgroup_data(service) -> list[dict]:
             "campaign": campaign,
             "adgroup": adgroup,
             "year": safe_int(row[2]),
-            "month": safe_int(row[3]),
+            "month": parse_month_from_date(row[3]),
             "impressions": safe_int(row[4]),
             "clicks": safe_int(row[5]),
             "cost": safe_float(row[6]),
