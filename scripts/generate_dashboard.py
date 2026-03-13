@@ -141,7 +141,7 @@ def parse_campaign_meta(name: str) -> dict:
         campaign_type = "Other"
 
     # Region — check each part against known region codes
-    region = "Global"  # default (WW or unrecognised)
+    region = "EMEA"  # default (WW or unrecognised → EMEA)
     for p in parts:
         pu = p.upper()
         if pu == "APAC":
@@ -242,9 +242,9 @@ def parse_adgroup_campaign_name(name: str) -> dict:
     elif last in ("USA", "CA"):
         region = "NAM"
     elif last == "WW":
-        region = "Global"
+        region = "EMEA"
     else:
-        region = "Global"  # default for BF campaigns etc.
+        region = "EMEA"  # default for BF campaigns etc. → EMEA
 
     # Campaign type from name content
     if "COMPETITOR" in name_upper:
@@ -520,7 +520,7 @@ def compute_optimizations(
       issues [str, …], severity, period_label
     """
     _TYPE_ORDER   = ["GymManagement", "Modality", "Branded", "Competitor", "Demand Gen", "Other"]
-    _REGION_ORDER = ["NAM", "EMEA", "APAC", "Global"]
+    _REGION_ORDER = ["NAM", "EMEA", "APAC"]
     _TYPE_LABELS  = {
         "GymManagement": "Gym Mgmt", "Modality": "Modality",
         "Branded": "Branded", "Competitor": "Competitor",

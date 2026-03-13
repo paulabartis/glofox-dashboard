@@ -254,6 +254,36 @@ Show a bar chart of MQL→SQL conversion rate by campaign type+region with a 25%
 
 ---
 
+### Task: Consolidate Global → EMEA (3-region model: NAM / EMEA / APAC)
+Global campaigns (WW targeting) should roll up into EMEA so all reporting uses exactly 3 regions.
+
+**Target region mapping:**
+| Current value | New value |
+|---------------|-----------|
+| `NAM` | `NAM` (unchanged — US + CA) |
+| `EMEA` | `EMEA` (unchanged — UK + EU) |
+| `APAC` | `APAC` (unchanged — AU) |
+| `Global` | `EMEA` (merge into EMEA) |
+
+**Files to change:**
+- `scripts/generate_dashboard.py` — `parse_campaign_meta()` and `parse_adgroup_campaign_name()`: anywhere `WW` / `Global` currently maps to `"Global"`, change to `"EMEA"` instead
+- `dashboard/template.html` — remove `Global` from `REGION_ORDER` array and any region label/colour references
+
+**Sub-tasks:**
+- [ ] Update `parse_campaign_meta()` in `generate_dashboard.py`: `WW` → `"EMEA"`
+- [ ] Update `parse_adgroup_campaign_name()` in `generate_dashboard.py`: `WW` → `"EMEA"`
+- [ ] Remove `"Global"` from `REGION_ORDER` in `template.html`
+- [ ] Verify region labels dict in `template.html` has no orphaned `Global` entry
+- [ ] Regenerate + verify funnel-by-region table shows exactly NAM / EMEA / APAC rows
+- [ ] Push
+
+**How to test:**
+- Funnel by Region table: 3 rows only (NAM, EMEA, APAC) — EMEA spend/MQL/SQL should be visibly higher than before (absorbing ex-Global rows)
+- No `Global` row anywhere in Overview or Campaign Optimizations tab
+- Campaign Optimizations cards: any previously labelled `Global` now show `EMEA` badge
+
+---
+
 ### Task: Weekly account changes tab
 Show what changed in the Google Ads account week-over-week — new/paused campaigns, significant budget or spend shifts, new ad groups.
 
