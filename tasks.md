@@ -284,6 +284,64 @@ Global campaigns (WW targeting) should roll up into EMEA so all reporting uses e
 
 ---
 
+### Task: Search Impression Share + Lost IS (Rank) weekly charts
+Add two line charts to the Overview tab showing weekly Paid Search visibility trends:
+1. **Search Impression Share %** — what % of eligible impressions we actually captured
+2. **Impression Share Lost to Rank %** — what % we lost due to Quality Score / bid (not budget)
+
+**Why:** IS and Lost IS (Rank) are the clearest signal of whether Search campaigns are under-bidding or have QS problems. A weekly line makes the trend visible without needing to log into Google Ads.
+
+**Data requirements — new fields needed in GadsData:**
+Current GadsData schema: `Campaign | Year | Month | Impressions | Clicks | Cost`
+Need to add (at weekly granularity for the chart):
+- `search_impression_share` → `metrics.search_impression_share`
+- `search_rank_lost_impression_share` → `metrics.search_rank_lost_impression_share`
+- `Week` column (ISO week start date `YYYY-MM-DD`) instead of Month for this dataset
+
+**Options:**
+- A. Add a separate `ImpShareWeekly` sheet tab with weekly IS data (clean separation, recommended)
+- B. Add IS columns to existing `GadsData` tab at monthly grain (simpler but loses weekly trend)
+
+**Recommended: Option A** — weekly granularity is the whole point; keeps GadsData clean.
+
+**GAQL query needed (add to `sync_gads_to_sheet.py`):**
+```sql
+SELECT
+    campaign.name,
+    segments.week,
+    metrics.search_impression_share,
+    metrics.search_rank_lost_impression_share,
+    metrics.search_budget_lost_impression_share
+FROM campaign
+WHERE segments.date DURING LAST_90_DAYS
+  AND campaign.advertising_channel_type = 'SEARCH'
+  AND campaign.status = 'ENABLED'
+ORDER BY segments.week DESC
+```
+
+**Dashboard chart — two lines on one chart:**
+- X axis: week (last 12 weeks)
+- Y axis: 0–100%
+- Line 1: IS % (blue) — higher is better, goal line at e.g. 60%
+- Line 2: Lost IS Rank % (red) — lower is better
+- Filter: Paid Search campaigns only; aggregate across all SEM campaigns
+
+**Sub-tasks:**
+- [ ] Add `fetch_impression_share_weekly()` to `sync_gads_to_sheet.py`, write to `ImpShareWeekly` tab
+- [ ] Add `load_imp_share_data()` to `generate_dashboard.py`, include in payload as `imp_share`
+- [ ] Add IS chart widget to Overview tab in `template.html` (SVG line chart, 2 series)
+- [ ] Add goal line at 60% IS (configurable constant)
+- [ ] Run sync + regenerate + verify chart renders with real data
+- [ ] Push
+
+**How to test:**
+- `ImpShareWeekly` tab exists in sheet with ~12 weeks of data
+- Chart appears on Overview tab with two lines
+- Lost IS (Rank) line is visible and distinct from IS line
+- Hovering a data point shows week + value tooltip
+
+---
+
 ### Task: Weekly account changes tab
 Show what changed in the Google Ads account week-over-week — new/paused campaigns, significant budget or spend shifts, new ad groups.
 
