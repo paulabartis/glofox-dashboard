@@ -670,11 +670,15 @@ def compute_optimizations(
                 f"Click-to-MQL {mql/clk*100:.2f}% — high form friction; "
                 "simplify fields or improve landing page copy"))
 
-        # P2 – Low MQL→SQL rate
-        if mql >= 5 and mql_sql < 0.10:
+        # P1/P2 – Low MQL→SQL rate (goal = 25%)
+        if mql >= 5 and mql_sql < 0.15:
+            issues.append((1,
+                f"MQL→SQL {mql_sql*100:.0f}% is critically low (goal: 25%) — "
+                "review lead scoring thresholds and sales routing speed"))
+        elif mql >= 5 and mql_sql < 0.25:
             issues.append((2,
-                f"MQL→SQL {mql_sql*100:.0f}% is low — review lead scoring, "
-                "routing speed, or add a qualification question to the form"))
+                f"MQL→SQL {mql_sql*100:.0f}% is below goal of 25% — "
+                "review lead qualification criteria or sales follow-up cadence"))
 
         # P3 – MQLs but 0 SQLs
         if mql >= 5 and sql == 0:

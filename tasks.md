@@ -197,6 +197,63 @@ A fourth tab showing ad-group-level issues — mirrors the Optimizations tab but
 
 ---
 
+### Task: Rename tab + flag MQL→SQL < 25% as medium/red in Campaign Optimizations
+Two small changes to the Optimizations tab and its Python data.
+
+**Changes:**
+1. **Rename tab label** "Optimizations" → "Campaign Optimizations" (nav button + section title in `template.html`)
+2. **Lower MQL→SQL threshold from 10% → 25%** in `compute_optimizations()` in `generate_dashboard.py`:
+   - MQL→SQL < 15% → `high` (red)
+   - MQL→SQL 15–24% → `medium` (amber)
+   - MQL→SQL ≥ 25% → no issue on this rule (passes)
+   - Only applies when MQL > 0 (skip if no lead data)
+
+**Sub-tasks:**
+- [ ] Update nav button text and section title in `template.html`
+- [ ] Update MQL→SQL thresholds in `compute_optimizations()` (`generate_dashboard.py`)
+- [ ] Regenerate + verify — expect more medium/high cards since 25% is a tighter target
+- [ ] Push
+
+**How to test:**
+- Tab label reads "Campaign Optimizations"
+- A campaign type+region with, say, 20% MQL→SQL shows as medium (amber)
+- One with 10% shows as high (red)
+- One with 30% no longer has an MQL→SQL issue flagged
+
+---
+
+### Task: Overview — MQL→SQL conversion graph with 25% goal + drill-through to Optimizations
+Show a bar chart of MQL→SQL conversion rate by campaign type+region with a 25% goal line. Any bar below 25% is clickable and jumps to that campaign's card in the Optimizations tab.
+
+**Desired behaviour:**
+- Bar chart on the Overview tab: one bar per campaign type (or type×region) showing MQL→SQL %
+- Horizontal reference line at 25% (the goal), labelled "Goal: 25%"
+- Bars below 25% rendered in red/amber; bars at or above in green
+- Clicking an under-performing bar navigates to the Optimizations tab and scrolls/highlights the matching card
+- Works with the current period filter (chart updates when period changes)
+
+**Implementation notes:**
+- Data already in `D.campaigns` — group by `campaign_type` or `(campaign_type, region)` and compute `sum(sql)/sum(mql)` for the selected period
+- Chart: pure SVG or lightweight canvas (no extra library needed — same pattern as the existing Paid Search bar chart)
+- Deep-link: switch to Opts tab (`showTab('opts')`) then `scrollIntoView()` the matching `.opt-card` and flash it (CSS keyframe highlight)
+- Opt cards need a stable `id` attr like `id="opt-card-GymManagement-NAM"` for the scroll target
+- No Python changes needed — all data already in payload
+
+**Sub-tasks:**
+- [ ] Add conversion rate bar chart (SVG) to Overview tab below the funnel tables
+- [ ] Draw 25% goal line across chart
+- [ ] Colour bars: green ≥ 25%, amber 15–24%, red < 15%
+- [ ] Add `id` attributes to opt-cards in `renderOptimizationsTab()` for deep-link targets
+- [ ] On bar click: switch to Opts tab, scroll to card, briefly highlight it
+- [ ] Hook chart to period filter (re-draw on period change)
+
+**How to test:**
+- Load Overview — chart appears with correct bars and 25% line
+- Click a red bar — Optimizations tab opens, matching card is visible and briefly highlighted
+- Change period — chart updates to match new date range
+
+---
+
 ### Task: Weekly account changes tab
 Show what changed in the Google Ads account week-over-week — new/paused campaigns, significant budget or spend shifts, new ad groups.
 
