@@ -263,6 +263,32 @@ def parse_adgroup_campaign_name(name: str) -> dict:
     return {"campaign_type": campaign_type, "region": region}
 
 
+def make_display_name(name: str) -> str:
+    """
+    Convert a Looker-style campaign name to a short human-readable label.
+    e.g. 'SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125' → 'GymMgmt · WW · Google Search'
+    """
+    parts = name.split("_")
+    provider_map = {"Google": "Google", "Bing": "Bing", "FB": "Meta", "Meta": "Meta"}
+    provider = next((provider_map[p] for p in parts if p in provider_map), "")
+    try:
+        ppc_idx = parts.index("PPC")
+    except ValueError:
+        return name[:40]
+    relevant = parts[ppc_idx + 1:]
+    if relevant and re.match(r"^\d{6}$", relevant[-1]):
+        relevant = relevant[:-1]
+    channel_map = {"SEM": "Search", "DG": "Demand Gen", "DIS": "Display", "SM": "Social"}
+    channel = channel_map.get(relevant[0], "") if relevant else ""
+    rest = relevant[1:] if relevant else []
+    label_parts = [r for r in rest if r]
+    if provider and channel:
+        label_parts.append(f"{provider} {channel}")
+    elif channel:
+        label_parts.append(channel)
+    return " · ".join(label_parts) if label_parts else name[:40]
+
+
 def load_adgroup_data(service) -> list[dict]:
     """
     AdGroupData tab (written by sync_gads_to_sheet.py).
@@ -454,6 +480,226 @@ def build_campaign_rows(
     return merged
 
 
+# ── Optimizations engine ─────────────────────────────────────────────────────
+
+def compute_optimizations(
+    campaign_rows: list[dict],
+    adgroup_data: list[dict],
+) -> list[dict]:
+    """
+    Analyse the most recent 3 months of campaign data and generate up to 10
+    prioritised optimization recommendations per campaign.
+
+    Returns a list of campaign dicts (sorted by type → region) each with:
+      name, display_name, campaign_type, region, channel,
+      metrics {cost, impressions, clicks, mql, sql},
+      issues [str, …], severity, period_label
+    """
+    _TYPE_ORDER   = ["GymManagement", "Modality", "Branded", "Competitor", "Demand Gen", "Other"]
+    _REGION_ORDER = ["NAM", "EMEA", "APAC", "Global"]
+
+    # ── 1. Determine the 3-month window ──────────────────────────────────────
+    all_yms = sorted({
+        r["year"] * 100 + r["month"]
+        for r in campaign_rows
+        if r["year"] > 0 and r["month"] > 0
+    })
+    if not all_yms:
+        return []
+
+    max_ym   = all_yms[-1]
+    max_year = max_ym // 100
+    max_mon  = max_ym % 100
+    s_mon    = max_mon - 2
+    s_year   = max_year
+    if s_mon <= 0:
+        s_mon  += 12
+        s_year -= 1
+    from_ym = s_year * 100 + s_mon
+
+    def _ym_label(ym: int) -> str:
+        y, mo = divmod(ym, 100)
+        return ["Jan","Feb","Mar","Apr","May","Jun",
+                "Jul","Aug","Sep","Oct","Nov","Dec"][mo-1] + f" '{str(y)[2:]}"
+
+    window_yms   = [ym for ym in all_yms if ym >= from_ym]
+    period_label = (
+        f"{_ym_label(window_yms[0])} – {_ym_label(window_yms[-1])}"
+        if window_yms else "Last 3 months"
+    )
+
+    # ── 2. Aggregate campaign rows for the window ─────────────────────────────
+    camp_agg: dict[str, dict] = {}
+    for r in campaign_rows:
+        if r["year"] * 100 + r["month"] < from_ym:
+            continue
+        k = r["campaign_name"]
+        if k not in camp_agg:
+            camp_agg[k] = {
+                "campaign_type": r["campaign_type"],
+                "region":        r["region"],
+                "channel":       r["channel"],
+                "cost": 0.0, "impressions": 0, "clicks": 0,
+                "mql":  0,   "sql":          0,
+            }
+        a = camp_agg[k]
+        a["cost"]        += r["cost"]
+        a["impressions"] += r["impressions"]
+        a["clicks"]      += r["clicks"]
+        a["mql"]         += r["mql"]
+        a["sql"]         += r["sql"]
+
+    if not camp_agg:
+        return []
+
+    # ── 3. Benchmarks ─────────────────────────────────────────────────────────
+    cpcs    = [v["cost"]/v["clicks"] for v in camp_agg.values() if v["clicks"]  >= 30]
+    cp_mqls = [v["cost"]/v["mql"]    for v in camp_agg.values()
+               if v["mql"] >= 3 and v["cost"] > 0]
+    avg_cpc    = sum(cpcs)    / len(cpcs)    if cpcs    else 0.0
+    avg_cp_mql = sum(cp_mqls) / len(cp_mqls) if cp_mqls else 0.0
+
+    # ── 4. Ad group index by (campaign_type, region) ──────────────────────────
+    ag_idx: dict[tuple, dict[str, dict]] = {}
+    for r in adgroup_data:
+        if r["year"] * 100 + r["month"] < from_ym:
+            continue
+        key = (r["campaign_type"], r["region"])
+        ag  = r["adgroup"]
+        if key not in ag_idx:
+            ag_idx[key] = {}
+        if ag not in ag_idx[key]:
+            ag_idx[key][ag] = {"impressions": 0, "clicks": 0, "cost": 0.0}
+        ag_idx[key][ag]["impressions"] += r["impressions"]
+        ag_idx[key][ag]["clicks"]      += r["clicks"]
+        ag_idx[key][ag]["cost"]        += r["cost"]
+
+    # ── 5. Generate issues per campaign ───────────────────────────────────────
+    result = []
+    for camp_name, m in camp_agg.items():
+        issues: list[tuple[int, str]] = []   # (priority, text)
+
+        cost = m["cost"]
+        imp  = m["impressions"]
+        clk  = m["clicks"]
+        mql  = m["mql"]
+        sql  = m["sql"]
+        ch   = m["channel"]
+
+        ctr     = clk  / imp  if imp  > 0 else 0.0
+        cpc     = cost / clk  if clk  > 0 else 0.0
+        cp_mql  = cost / mql  if mql  > 0 else 0.0
+        mql_sql = sql  / mql  if mql  > 0 else 0.0
+
+        # NOTE: Cost/CTR/CPC rules are gated on cost > 0.
+        # Currently, GadsData (Google Ads API) uses readable campaign names that
+        # don't match the Looker-style names in CampaignsData, so the join yields
+        # cost=0 for all rows. Once the name mapping is resolved (see tasks.md),
+        # these rules will activate automatically.
+
+        # P1 – Spend with 0 MQLs
+        if cost > 300 and mql == 0:
+            issues.append((1,
+                f"${cost:,.0f} spend but 0 MQLs — review landing page, "
+                "keyword match types, or audience targeting"))
+
+        # P1 – Strong CTR but no MQL conversion (LP mismatch)
+        if clk >= 30 and mql == 0 and ctr >= 0.025:
+            issues.append((1,
+                f"Strong CTR ({ctr*100:.1f}%) but 0 MQLs from {clk} clicks "
+                "— landing page likely doesn't match ad intent"))
+
+        # P2 – Low CTR on Search
+        if ch == "Paid Search" and imp >= 500 and ctr < 0.01:
+            issues.append((2,
+                f"CTR {ctr*100:.1f}% is below 1% for Search — A/B test new "
+                "RSA headlines and review keyword-to-ad relevance"))
+
+        # P2 – Low CTR on Display / Demand Gen
+        if ch == "Paid Other" and imp >= 5000 and ctr < 0.002:
+            issues.append((2,
+                f"CTR {ctr*100:.2f}% is low for display/demand gen — "
+                "refresh creatives and test new audience segments"))
+
+        # P2 – CPC above benchmark
+        if avg_cpc > 0 and clk >= 20 and cpc > avg_cpc * 1.6:
+            issues.append((2,
+                f"CPC ${cpc:.2f} is {cpc/avg_cpc:.1f}× above average "
+                f"(${avg_cpc:.2f}) — review bid strategy and Quality Score"))
+
+        # P2 – Cost/MQL above benchmark
+        if avg_cp_mql > 0 and mql >= 3 and cp_mql > avg_cp_mql * 1.5:
+            issues.append((2,
+                f"Cost/MQL ${cp_mql:,.0f} is {cp_mql/avg_cp_mql:.1f}× above "
+                f"average (${avg_cp_mql:,.0f}) — tighten audience or reduce bids"))
+
+        # P2 – Very low click-to-MQL rate
+        if clk >= 50 and mql > 0 and (mql / clk) < 0.005:
+            issues.append((2,
+                f"Click-to-MQL {mql/clk*100:.2f}% — high form friction; "
+                "simplify fields or improve landing page copy"))
+
+        # P2 – Low MQL→SQL rate
+        if mql >= 5 and mql_sql < 0.10:
+            issues.append((2,
+                f"MQL→SQL {mql_sql*100:.0f}% is low — review lead scoring, "
+                "routing speed, or add a qualification question to the form"))
+
+        # P3 – MQLs but 0 SQLs
+        if mql >= 5 and sql == 0:
+            issues.append((3,
+                f"{mql} MQLs but 0 SQLs — investigate handoff to sales; "
+                "may need to tighten the MQL definition"))
+
+        # P3 – Near-zero impressions relative to spend (only when cost data available)
+        if cost > 200 and imp < 100 and clk == 0:
+            issues.append((3,
+                f"Only {imp} impressions on ${cost:.0f} spend — check bidding "
+                "eligibility, Quality Score, or audience size"))
+
+        # ── Ad group structure rules (only for campaigns with matched cost data) ─
+        # Skipped until GadsData→CampaignsData name join is resolved, to avoid
+        # spurious warnings from type+region-level aggregation.
+        # TODO: re-enable once campaign_rows carry cost > 0 for Google campaigns.
+
+        # ── Sort, cap, severity ───────────────────────────────────────────────
+        issues.sort(key=lambda x: x[0])
+        top_issues = issues[:10]
+
+        priorities = [p for p, _ in top_issues]
+        if   any(p <= 1 for p in priorities): severity = "high"
+        elif any(p <= 2 for p in priorities): severity = "medium"
+        elif priorities:                      severity = "low"
+        else:                                 severity = "ok"
+
+        result.append({
+            "name":          camp_name,
+            "display_name":  make_display_name(camp_name),
+            "campaign_type": m["campaign_type"],
+            "region":        m["region"],
+            "channel":       m["channel"],
+            "metrics": {
+                "cost":        round(cost, 2),
+                "impressions": imp,
+                "clicks":      clk,
+                "mql":         mql,
+                "sql":         sql,
+            },
+            "issues":       [t for _, t in top_issues],
+            "severity":     severity,
+            "period_label": period_label,
+        })
+
+    # Sort by type order → region order → name
+    def _sort_key(r: dict):
+        t = _TYPE_ORDER.index(r["campaign_type"])   if r["campaign_type"] in _TYPE_ORDER   else 99
+        g = _REGION_ORDER.index(r["region"])        if r["region"]        in _REGION_ORDER else 99
+        return (t, g, r["name"])
+
+    result.sort(key=_sort_key)
+    return result
+
+
 # ── HTML generation ───────────────────────────────────────────────────────────
 
 def render_html(template_path: str, data: dict) -> str:
@@ -497,11 +743,18 @@ def main():
     print(f"  Merged campaign rows: {len(campaign_rows)}")
 
     print("[4/5] Building dashboard payload...")
+    optimizations = compute_optimizations(campaign_rows, adgroup_data)
+    high   = sum(1 for o in optimizations if o["severity"] == "high")
+    medium = sum(1 for o in optimizations if o["severity"] == "medium")
+    print(f"  Optimizations: {len(optimizations)} campaigns "
+          f"({high} high, {medium} medium priority)")
+
     dashboard_data = {
-        "generated_at": date.today().isoformat(),
-        "campaigns": campaign_rows,
-        "monthly_kpis": monthly_summary,
-        "adgroups": adgroup_data,
+        "generated_at":  date.today().isoformat(),
+        "campaigns":     campaign_rows,
+        "monthly_kpis":  monthly_summary,
+        "adgroups":      adgroup_data,
+        "optimizations": optimizations,
     }
 
     print("[5/5] Rendering HTML...")
@@ -514,6 +767,7 @@ def main():
     print(f"Campaign rows included: {len(campaign_rows)}")
     print(f"Monthly KPI periods: {len(monthly_summary)}")
     print(f"Ad group rows included: {len(adgroup_data)}")
+    print(f"Optimization campaigns: {len(optimizations)}")
 
 
 if __name__ == "__main__":

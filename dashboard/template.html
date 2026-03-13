@@ -141,6 +141,54 @@
   .ag-campaign-start td { border-top:2px solid #E2E8F0 !important; background:#F8FAFC; }
   .ag-campaign-cell { font-weight:700 !important; color:#1E293B !important; line-height:1.4; }
   .ag-type-badge { font-size:11px; font-weight:500; color:#94A3B8; }
+
+  /* ── Optimizations tab ── */
+  .opt-period-note { font-size:12px; color:#94A3B8; margin:-12px 0 20px; }
+  .opt-type-heading {
+    grid-column:1/-1; font-size:12px; font-weight:700; color:#64748B;
+    text-transform:uppercase; letter-spacing:.6px;
+    padding:6px 0 8px; border-bottom:2px solid #E2E8F0; margin-top:8px;
+  }
+  .opt-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(400px,1fr)); gap:14px; }
+  .opt-card {
+    background:#fff; border-radius:10px; border:1px solid #E2E8F0;
+    border-left:4px solid #94A3B8; padding:16px 18px;
+    box-shadow:0 1px 3px rgba(0,0,0,.04);
+  }
+  .opt-card.sev-high   { border-left-color:#DC2626; }
+  .opt-card.sev-medium { border-left-color:#D97706; }
+  .opt-card.sev-low    { border-left-color:#3B82F6; }
+  .opt-card.sev-ok     { border-left-color:#16A34A; }
+  .opt-card-name { font-size:14px; font-weight:700; color:#1E293B; margin-bottom:6px; }
+  .opt-badges { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px; }
+  .opt-badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; }
+  .opt-badge-type    { background:#EFF6FF; color:#3B82F6; }
+  .opt-badge-region  { background:#F0FDF4; color:#16A34A; }
+  .opt-badge-channel { background:#F8FAFC; color:#64748B; border:1px solid #E2E8F0; }
+  .opt-sev-pill {
+    font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px;
+    text-transform:uppercase; letter-spacing:.4px; float:right; margin-left:8px; margin-top:2px;
+  }
+  .opt-sev-pill.sev-high   { background:#FEF2F2; color:#DC2626; }
+  .opt-sev-pill.sev-medium { background:#FFFBEB; color:#D97706; }
+  .opt-sev-pill.sev-low    { background:#EFF6FF; color:#3B82F6; }
+  .opt-sev-pill.sev-ok     { background:#F0FDF4; color:#16A34A; }
+  .opt-metrics {
+    display:flex; margin-bottom:12px;
+    background:#F8FAFC; border-radius:6px; overflow:hidden; border:1px solid #E2E8F0;
+  }
+  .opt-metric { flex:1; padding:7px 10px; text-align:center; border-right:1px solid #E2E8F0; }
+  .opt-metric:last-child { border-right:none; }
+  .opt-metric-label { font-size:10px; color:#94A3B8; font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
+  .opt-metric-val { font-size:14px; font-weight:700; color:#1E293B; margin-top:1px; }
+  .opt-issues { list-style:none; margin:0; padding:0; }
+  .opt-issues li {
+    font-size:12px; color:#475569; padding:5px 0;
+    border-bottom:1px solid #F1F5F9; display:flex; gap:7px; align-items:flex-start; line-height:1.45;
+  }
+  .opt-issues li:last-child { border-bottom:none; }
+  .opt-issues li::before { content:'•'; color:#CBD5E1; flex-shrink:0; margin-top:1px; }
+  .opt-ok { font-size:12px; color:#16A34A; font-weight:600; padding:6px 0; }
 </style>
 </head>
 <body>
@@ -175,6 +223,7 @@
   <div class="tab-nav">
     <button class="tab-btn active" data-tab="overview">Overview</button>
     <button class="tab-btn" data-tab="adgroups">Ad Groups</button>
+    <button class="tab-btn" data-tab="opts">Optimizations</button>
   </div>
 
   <!-- Overview tab -->
@@ -268,6 +317,18 @@
       </div>
     </div>
   </div><!-- /tab-adgroups -->
+
+  <!-- Optimizations tab -->
+  <div id="tab-opts" style="display:none">
+    <div class="section">
+      <div class="section-title">
+        Weekly Optimizations
+        <span class="badge" id="opt-period-badge">Last 3 months</span>
+      </div>
+      <p class="opt-period-note" id="opt-period-note"></p>
+      <div class="opt-grid" id="opt-grid"></div>
+    </div>
+  </div><!-- /tab-opts -->
 
   <div class="footer-note" id="footer-note"></div>
 </div>
@@ -525,6 +586,76 @@ function renderAdGroupsTab(fromYM, toYM) {
   }).join('');
 }
 
+// ── Optimizations tab ─────────────────────────────────────────────────────────
+const TYPE_LABELS = {
+  GymManagement: 'Gym Management', Modality: 'Modality',
+  Branded: 'Branded', Competitor: 'Competitor',
+  'Demand Gen': 'Demand Gen', Other: 'Other',
+};
+const SEV_LABELS = { high:'High', medium:'Medium', low:'Low', ok:'OK' };
+
+function renderOptimizationsTab() {
+  const opts = D.optimizations || [];
+  const grid = document.getElementById('opt-grid');
+  if (!opts.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No optimization data available.</div>';
+    return;
+  }
+  // Period label
+  if (opts[0] && opts[0].period_label) {
+    const lbl = opts[0].period_label;
+    document.getElementById('opt-period-note').textContent =
+      'Based on data from ' + lbl + '  ·  Campaigns with no issues are still worth reviewing quarterly.';
+    document.getElementById('opt-period-badge').textContent = lbl;
+  }
+  // Group by campaign_type in TYPE_ORDER
+  const TYPE_ORDER_OPT = ['GymManagement','Modality','Branded','Competitor','Demand Gen','Other'];
+  const byType = {};
+  for (const c of opts) {
+    const t = c.campaign_type || 'Other';
+    if (!byType[t]) byType[t] = [];
+    byType[t].push(c);
+  }
+  let html = '';
+  for (const type of TYPE_ORDER_OPT) {
+    const camps = byType[type];
+    if (!camps || !camps.length) continue;
+    html += `<div class="opt-type-heading">${TYPE_LABELS[type] || type}</div>`;
+    for (const c of camps) {
+      const m   = c.metrics;
+      const ctr = m.impressions > 0 ? fmtPct(m.clicks / m.impressions) : '—';
+      const cpc = m.clicks      > 0 ? fmt$(m.cost / m.clicks)           : '—';
+      const mqlSqlPct = m.mql   > 0 ? fmtPct(m.sql / m.mql)            : '—';
+      const issuesHtml = c.issues.length > 0
+        ? `<ul class="opt-issues">${c.issues.map(i =>
+            `<li>${i}</li>`).join('')}</ul>`
+        : `<div class="opt-ok">✓ No issues found for this period</div>`;
+      html += `
+<div class="opt-card sev-${c.severity}">
+  <div class="opt-card-name">
+    <span class="opt-sev-pill sev-${c.severity}">${SEV_LABELS[c.severity]}</span>
+    ${c.display_name}
+  </div>
+  <div class="opt-badges">
+    <span class="opt-badge opt-badge-type">${TYPE_LABELS[c.campaign_type] || c.campaign_type}</span>
+    <span class="opt-badge opt-badge-region">${c.region}</span>
+    <span class="opt-badge opt-badge-channel">${c.channel}</span>
+  </div>
+  <div class="opt-metrics">
+    <div class="opt-metric"><div class="opt-metric-label">Spend</div><div class="opt-metric-val">${fmt$(m.cost)}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">MQL</div><div class="opt-metric-val">${m.mql}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">SQL</div><div class="opt-metric-val">${m.sql}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">MQL→SQL</div><div class="opt-metric-val">${mqlSqlPct}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">CTR</div><div class="opt-metric-val">${ctr}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">CPC</div><div class="opt-metric-val">${cpc}</div></div>
+  </div>
+  ${issuesHtml}
+</div>`;
+    }
+  }
+  grid.innerHTML = html;
+}
+
 // ── Main render ───────────────────────────────────────────────────────────────
 let lastRange = { fromYM: 0, toYM: 0 };
 
@@ -587,7 +718,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     );
     document.getElementById('tab-overview').style.display = tab === 'overview' ? '' : 'none';
     document.getElementById('tab-adgroups').style.display = tab === 'adgroups' ? '' : 'none';
+    document.getElementById('tab-opts').style.display     = tab === 'opts'      ? '' : 'none';
     if (tab === 'adgroups') renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
+    if (tab === 'opts')     renderOptimizationsTab();
   });
 });
 
