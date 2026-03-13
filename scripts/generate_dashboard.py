@@ -413,67 +413,85 @@ def build_campaign_rows(
     campaigns_data: list[dict],
 ) -> list[dict]:
     """
-    Join GadsData + CampaignsData on (campaign_name, year, month).
-    GadsData is the primary source (provides spend/clicks).
-    CampaignsData-only rows are also included (MQL/SQL without cost).
+    Build campaign rows for the dashboard from two incompatible naming systems.
+
+    GadsData uses Google Ads readable names ("Gym Management USA") while
+    CampaignsData uses Looker-style names ("SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125").
+    A name-level join is impossible, so the two sources are kept separate:
+
+    1. CampaignsData rows → one row per Looker campaign (MQL/SQL, cost=0).
+    2. GadsData aggregate rows → one row per (campaign_type, region, year, month)
+       carrying real cost/impressions/clicks, mql=sql=0, flagged _is_gads_agg=True.
+
+    The JS groups by campaign_type and region, so Overview tab aggregates are correct.
+    compute_optimizations() uses both row types to build per-(type, region) cards.
     """
-    # Index CampaignsData for fast lookup
-    cd_index: dict[tuple, dict] = {}
-    for row in campaigns_data:
-        key = (row["name"], row["year"], row["month"])
-        # If duplicate key, accumulate (shouldn't normally happen)
-        if key in cd_index:
-            cd_index[key]["mql"] += row["mql"]
-            cd_index[key]["sql"] += row["sql"]
-        else:
-            cd_index[key] = {"mql": row["mql"], "sql": row["sql"]}
-
     merged: list[dict] = []
-    seen: set[tuple] = set()
 
-    # Primary: rows from GadsData
-    for row in gads_data:
-        if not is_paid_ppc(row["name"]):
-            continue
-        key = (row["name"], row["year"], row["month"])
-        seen.add(key)
-        cd = cd_index.get(key, {"mql": 0, "sql": 0})
+    # ── 1. CampaignsData rows (MQL/SQL, no cost) ────────────────────────────
+    for row in campaigns_data:
         meta = parse_campaign_meta(row["name"])
-
         merged.append({
             "campaign_name": row["name"],
-            "year": row["year"],
-            "month": row["month"],
-            "label": month_label(row["year"], row["month"]),
+            "year":          row["year"],
+            "month":         row["month"],
+            "label":         month_label(row["year"], row["month"]),
             "campaign_type": meta["campaign_type"],
-            "region": meta["region"],
-            "channel": meta["channel"],
-            "impressions": row["impressions"],
-            "clicks": row["clicks"],
-            "cost": row["cost"],
-            "mql": cd["mql"],
-            "sql": cd["sql"],
+            "region":        meta["region"],
+            "channel":       meta["channel"],
+            "impressions":   0,
+            "clicks":        0,
+            "cost":          0.0,
+            "mql":           row["mql"],
+            "sql":           row["sql"],
+            "_is_gads_agg":  False,
         })
 
-    # Secondary: CampaignsData rows with no matching Gads entry
-    for row in campaigns_data:
-        key = (row["name"], row["year"], row["month"])
-        if key in seen:
+    # ── 2. GadsData aggregate rows (cost/traffic, no MQL/SQL) ───────────────
+    # Aggregate GadsData by (campaign_type, region, year, month).
+    # GadsData names are Google Ads readable → parse with parse_adgroup_campaign_name().
+    gads_agg: dict[tuple, dict] = {}
+    for row in gads_data:
+        yr = row["year"]
+        mo = row["month"]
+        if yr == 0 or mo == 0:
             continue
-        meta = parse_campaign_meta(row["name"])
+        meta = parse_adgroup_campaign_name(row["name"])
+        ct   = meta["campaign_type"]
+        reg  = meta["region"]
+        key  = (ct, reg, yr, mo)
+        if key not in gads_agg:
+            # Channel: Demand Gen campaigns → Paid Other; all others → Paid Search
+            ch = "Paid Other" if ct == "Demand Gen" else "Paid Search"
+            gads_agg[key] = {
+                "campaign_type": ct,
+                "region":        reg,
+                "year":          yr,
+                "month":         mo,
+                "channel":       ch,
+                "impressions":   0,
+                "clicks":        0,
+                "cost":          0.0,
+            }
+        gads_agg[key]["impressions"] += row["impressions"]
+        gads_agg[key]["clicks"]      += row["clicks"]
+        gads_agg[key]["cost"]        += row["cost"]
+
+    for (ct, reg, yr, mo), g in gads_agg.items():
         merged.append({
-            "campaign_name": row["name"],
-            "year": row["year"],
-            "month": row["month"],
-            "label": month_label(row["year"], row["month"]),
-            "campaign_type": meta["campaign_type"],
-            "region": meta["region"],
-            "channel": meta["channel"],
-            "impressions": 0,
-            "clicks": 0,
-            "cost": 0.0,
-            "mql": row["mql"],
-            "sql": row["sql"],
+            "campaign_name": f"__gads_{ct}_{reg}",
+            "year":          yr,
+            "month":         mo,
+            "label":         month_label(yr, mo),
+            "campaign_type": g["campaign_type"],
+            "region":        g["region"],
+            "channel":       g["channel"],
+            "impressions":   g["impressions"],
+            "clicks":        g["clicks"],
+            "cost":          g["cost"],
+            "mql":           0,
+            "sql":           0,
+            "_is_gads_agg":  True,
         })
 
     merged.sort(key=lambda x: (x["year"], x["month"], x["campaign_name"]))
@@ -488,15 +506,26 @@ def compute_optimizations(
 ) -> list[dict]:
     """
     Analyse the most recent 3 months of campaign data and generate up to 10
-    prioritised optimization recommendations per campaign.
+    prioritised optimization recommendations per (campaign_type, region) bucket.
 
-    Returns a list of campaign dicts (sorted by type → region) each with:
+    campaign_rows contains two row types (set by build_campaign_rows):
+      • _is_gads_agg=False  → Looker/CampaignsData rows: real MQL/SQL, cost=0
+      • _is_gads_agg=True   → GadsData aggregate rows:   real cost/impressions/clicks, mql=sql=0
+
+    These are combined per (campaign_type, region) to give full metrics for each card.
+
+    Returns a list of dicts (sorted by type → region) each with:
       name, display_name, campaign_type, region, channel,
       metrics {cost, impressions, clicks, mql, sql},
       issues [str, …], severity, period_label
     """
     _TYPE_ORDER   = ["GymManagement", "Modality", "Branded", "Competitor", "Demand Gen", "Other"]
     _REGION_ORDER = ["NAM", "EMEA", "APAC", "Global"]
+    _TYPE_LABELS  = {
+        "GymManagement": "Gym Mgmt", "Modality": "Modality",
+        "Branded": "Branded", "Competitor": "Competitor",
+        "Demand Gen": "Demand Gen", "Other": "Other",
+    }
 
     # ── 1. Determine the 3-month window ──────────────────────────────────────
     all_yms = sorted({
@@ -528,55 +557,63 @@ def compute_optimizations(
         if window_yms else "Last 3 months"
     )
 
-    # ── 2. Aggregate campaign rows for the window ─────────────────────────────
-    camp_agg: dict[str, dict] = {}
+    # ── 2. Separate cost rows (GadsData) and MQL/SQL rows (CampaignsData) ────
+    # Group both by (campaign_type, region) — the natural join key.
+    mql_sql_agg: dict[tuple, dict] = {}   # (ct, reg) → {mql, sql, channel}
+    cost_agg:    dict[tuple, dict] = {}   # (ct, reg) → {cost, impressions, clicks, channel}
+
     for r in campaign_rows:
         if r["year"] * 100 + r["month"] < from_ym:
             continue
-        k = r["campaign_name"]
-        if k not in camp_agg:
-            camp_agg[k] = {
-                "campaign_type": r["campaign_type"],
-                "region":        r["region"],
-                "channel":       r["channel"],
-                "cost": 0.0, "impressions": 0, "clicks": 0,
-                "mql":  0,   "sql":          0,
-            }
-        a = camp_agg[k]
-        a["cost"]        += r["cost"]
-        a["impressions"] += r["impressions"]
-        a["clicks"]      += r["clicks"]
-        a["mql"]         += r["mql"]
-        a["sql"]         += r["sql"]
+        ct  = r["campaign_type"]
+        reg = r["region"]
+        key = (ct, reg)
 
-    if not camp_agg:
+        if r.get("_is_gads_agg"):
+            if key not in cost_agg:
+                cost_agg[key] = {"channel": r["channel"], "impressions": 0, "clicks": 0, "cost": 0.0}
+            cost_agg[key]["cost"]        += r["cost"]
+            cost_agg[key]["impressions"] += r["impressions"]
+            cost_agg[key]["clicks"]      += r["clicks"]
+        else:
+            if key not in mql_sql_agg:
+                mql_sql_agg[key] = {"channel": r["channel"], "mql": 0, "sql": 0}
+            mql_sql_agg[key]["mql"] += r["mql"]
+            mql_sql_agg[key]["sql"] += r["sql"]
+
+    # ── 3. Combine per-(campaign_type, region) ────────────────────────────────
+    all_keys = set(mql_sql_agg.keys()) | set(cost_agg.keys())
+    if not all_keys:
         return []
 
-    # ── 3. Benchmarks ─────────────────────────────────────────────────────────
+    camp_agg: dict[tuple, dict] = {}
+    for key in all_keys:
+        ct, reg    = key
+        mq         = mql_sql_agg.get(key, {"mql": 0, "sql": 0, "channel": "Paid Search"})
+        co         = cost_agg.get(key, {"cost": 0.0, "impressions": 0, "clicks": 0, "channel": "Paid Search"})
+        # Prefer channel from cost_agg (GadsData) when cost is present, else from MQL rows
+        channel    = co["channel"] if co["cost"] > 0 else mq.get("channel", "Paid Search")
+        camp_agg[key] = {
+            "campaign_type": ct,
+            "region":        reg,
+            "channel":       channel,
+            "cost":          co["cost"],
+            "impressions":   co["impressions"],
+            "clicks":        co["clicks"],
+            "mql":           mq["mql"],
+            "sql":           mq["sql"],
+        }
+
+    # ── 4. Benchmarks ─────────────────────────────────────────────────────────
     cpcs    = [v["cost"]/v["clicks"] for v in camp_agg.values() if v["clicks"]  >= 30]
     cp_mqls = [v["cost"]/v["mql"]    for v in camp_agg.values()
                if v["mql"] >= 3 and v["cost"] > 0]
     avg_cpc    = sum(cpcs)    / len(cpcs)    if cpcs    else 0.0
     avg_cp_mql = sum(cp_mqls) / len(cp_mqls) if cp_mqls else 0.0
 
-    # ── 4. Ad group index by (campaign_type, region) ──────────────────────────
-    ag_idx: dict[tuple, dict[str, dict]] = {}
-    for r in adgroup_data:
-        if r["year"] * 100 + r["month"] < from_ym:
-            continue
-        key = (r["campaign_type"], r["region"])
-        ag  = r["adgroup"]
-        if key not in ag_idx:
-            ag_idx[key] = {}
-        if ag not in ag_idx[key]:
-            ag_idx[key][ag] = {"impressions": 0, "clicks": 0, "cost": 0.0}
-        ag_idx[key][ag]["impressions"] += r["impressions"]
-        ag_idx[key][ag]["clicks"]      += r["clicks"]
-        ag_idx[key][ag]["cost"]        += r["cost"]
-
-    # ── 5. Generate issues per campaign ───────────────────────────────────────
+    # ── 5. Generate issues per (campaign_type, region) ────────────────────────
     result = []
-    for camp_name, m in camp_agg.items():
+    for (ct, reg), m in camp_agg.items():
         issues: list[tuple[int, str]] = []   # (priority, text)
 
         cost = m["cost"]
@@ -591,12 +628,6 @@ def compute_optimizations(
         cp_mql  = cost / mql  if mql  > 0 else 0.0
         mql_sql = sql  / mql  if mql  > 0 else 0.0
 
-        # NOTE: Cost/CTR/CPC rules are gated on cost > 0.
-        # Currently, GadsData (Google Ads API) uses readable campaign names that
-        # don't match the Looker-style names in CampaignsData, so the join yields
-        # cost=0 for all rows. Once the name mapping is resolved (see tasks.md),
-        # these rules will activate automatically.
-
         # P1 – Spend with 0 MQLs
         if cost > 300 and mql == 0:
             issues.append((1,
@@ -606,7 +637,7 @@ def compute_optimizations(
         # P1 – Strong CTR but no MQL conversion (LP mismatch)
         if clk >= 30 and mql == 0 and ctr >= 0.025:
             issues.append((1,
-                f"Strong CTR ({ctr*100:.1f}%) but 0 MQLs from {clk} clicks "
+                f"Strong CTR ({ctr*100:.1f}%) but 0 MQLs from {clk:,} clicks "
                 "— landing page likely doesn't match ad intent"))
 
         # P2 – Low CTR on Search
@@ -651,16 +682,11 @@ def compute_optimizations(
                 f"{mql} MQLs but 0 SQLs — investigate handoff to sales; "
                 "may need to tighten the MQL definition"))
 
-        # P3 – Near-zero impressions relative to spend (only when cost data available)
+        # P3 – Near-zero impressions relative to spend
         if cost > 200 and imp < 100 and clk == 0:
             issues.append((3,
-                f"Only {imp} impressions on ${cost:.0f} spend — check bidding "
+                f"Only {imp} impressions on ${cost:,.0f} spend — check bidding "
                 "eligibility, Quality Score, or audience size"))
-
-        # ── Ad group structure rules (only for campaigns with matched cost data) ─
-        # Skipped until GadsData→CampaignsData name join is resolved, to avoid
-        # spurious warnings from type+region-level aggregation.
-        # TODO: re-enable once campaign_rows carry cost > 0 for Google campaigns.
 
         # ── Sort, cap, severity ───────────────────────────────────────────────
         issues.sort(key=lambda x: x[0])
@@ -672,12 +698,16 @@ def compute_optimizations(
         elif priorities:                      severity = "low"
         else:                                 severity = "ok"
 
+        # Display name: human-readable type + region label
+        type_lbl = _TYPE_LABELS.get(ct, ct)
+        display_name = f"{type_lbl} · {reg}"
+
         result.append({
-            "name":          camp_name,
-            "display_name":  make_display_name(camp_name),
-            "campaign_type": m["campaign_type"],
-            "region":        m["region"],
-            "channel":       m["channel"],
+            "name":          f"{ct}_{reg}",
+            "display_name":  display_name,
+            "campaign_type": ct,
+            "region":        reg,
+            "channel":       ch,
             "metrics": {
                 "cost":        round(cost, 2),
                 "impressions": imp,
@@ -691,7 +721,7 @@ def compute_optimizations(
         })
 
     # Sort by type order → region order → name
-    def _sort_key(r: dict):
+    def _sort_key(r: dict) -> tuple:
         t = _TYPE_ORDER.index(r["campaign_type"])   if r["campaign_type"] in _TYPE_ORDER   else 99
         g = _REGION_ORDER.index(r["region"])        if r["region"]        in _REGION_ORDER else 99
         return (t, g, r["name"])
