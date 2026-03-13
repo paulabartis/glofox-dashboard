@@ -189,6 +189,39 @@
   .opt-issues li:last-child { border-bottom:none; }
   .opt-issues li::before { content:'•'; color:#CBD5E1; flex-shrink:0; margin-top:1px; }
   .opt-ok { font-size:12px; color:#16A34A; font-weight:600; padding:6px 0; }
+
+  /* ── Opt filter bar ── */
+  .opt-filter-bar {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    margin-bottom:16px; padding:10px 14px;
+    background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px;
+  }
+  .opt-filter-label { font-size:12px; font-weight:600; color:#64748B; margin-right:4px; }
+  .opt-filter-btn {
+    font-size:12px; font-weight:600; padding:4px 12px; border-radius:20px;
+    border:1.5px solid #E2E8F0; background:#fff; cursor:pointer; color:#64748B;
+    transition:all .15s;
+  }
+  .opt-filter-btn:hover { border-color:#94A3B8; color:#1E293B; }
+  .opt-filter-btn.active { background:#1E293B; color:#fff; border-color:#1E293B; }
+  .opt-filter-btn.f-high.active   { background:#DC2626; border-color:#DC2626; }
+  .opt-filter-btn.f-medium.active { background:#D97706; border-color:#D97706; }
+  .opt-filter-btn.f-low.active    { background:#3B82F6; border-color:#3B82F6; }
+  .opt-filter-btn.f-ok.active     { background:#16A34A; border-color:#16A34A; }
+  .opt-count-chip {
+    display:inline-block; font-size:11px; font-weight:700;
+    padding:1px 6px; border-radius:10px; margin-left:4px;
+    background:#E2E8F0; color:#475569;
+  }
+  .opt-filter-btn.active .opt-count-chip { background:rgba(255,255,255,.25); color:#fff; }
+  .opt-ok-toggle {
+    grid-column:1/-1; text-align:center; padding:10px;
+    font-size:12px; font-weight:600; color:#3B82F6; cursor:pointer;
+    border:1.5px dashed #CBD5E1; border-radius:8px;
+    background:#F8FAFC; transition:background .15s;
+  }
+  .opt-ok-toggle:hover { background:#EFF6FF; border-color:#93C5FD; }
+  .opt-card[data-sev="ok"] { opacity:.85; }
 </style>
 </head>
 <body>
@@ -326,6 +359,7 @@
         <span class="badge" id="opt-period-badge">Last 3 months</span>
       </div>
       <p class="opt-period-note" id="opt-period-note"></p>
+      <div class="opt-filter-bar" id="opt-filter-bar"></div>
       <div class="opt-grid" id="opt-grid"></div>
     </div>
   </div><!-- /tab-opts -->
@@ -594,13 +628,20 @@ const TYPE_LABELS = {
 };
 const SEV_LABELS = { high:'High', medium:'Medium', low:'Low', ok:'OK' };
 
+// ── Opt tab state ─────────────────────────────────────────────────────────────
+let _optFilter = 'all';   // 'all' | 'high' | 'medium' | 'low' | 'ok'
+let _optShowOk = false;   // whether OK cards are expanded in 'all' mode
+
 function renderOptimizationsTab() {
   const opts = D.optimizations || [];
   const grid = document.getElementById('opt-grid');
+  const bar  = document.getElementById('opt-filter-bar');
   if (!opts.length) {
     grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No optimization data available.</div>';
+    bar.innerHTML  = '';
     return;
   }
+
   // Period label
   if (opts[0] && opts[0].period_label) {
     const lbl = opts[0].period_label;
@@ -608,7 +649,24 @@ function renderOptimizationsTab() {
       'Based on data from ' + lbl + '  ·  Campaigns with no issues are still worth reviewing quarterly.';
     document.getElementById('opt-period-badge').textContent = lbl;
   }
-  // Group by campaign_type in TYPE_ORDER
+
+  // Severity counts
+  const counts = { high:0, medium:0, low:0, ok:0 };
+  for (const c of opts) counts[c.severity] = (counts[c.severity] || 0) + 1;
+
+  // Build filter bar
+  const SEV_ICONS = { high:'🔴', medium:'🟡', low:'🔵', ok:'🟢' };
+  const sevButtons = ['high','medium','low','ok']
+    .filter(s => counts[s] > 0)
+    .map(s => `<button class="opt-filter-btn f-${s}${_optFilter===s?' active':''}" onclick="setOptFilter('${s}')">
+      ${SEV_ICONS[s]} ${SEV_LABELS[s]}<span class="opt-count-chip">${counts[s]}</span>
+    </button>`).join('');
+  bar.innerHTML = `
+    <span class="opt-filter-label">Filter:</span>
+    <button class="opt-filter-btn${_optFilter==='all'?' active':''}" onclick="setOptFilter('all')">All</button>
+    ${sevButtons}`;
+
+  // Group by campaign_type, sort within group by cost desc
   const TYPE_ORDER_OPT = ['GymManagement','Modality','Branded','Competitor','Demand Gen','Other'];
   const byType = {};
   for (const c of opts) {
@@ -616,22 +674,26 @@ function renderOptimizationsTab() {
     if (!byType[t]) byType[t] = [];
     byType[t].push(c);
   }
+  for (const t of Object.keys(byType)) {
+    byType[t].sort((a, b) => (b.metrics.cost || 0) - (a.metrics.cost || 0));
+  }
+
+  // Render all cards (filter visibility applied by applyOptFilter)
   let html = '';
   for (const type of TYPE_ORDER_OPT) {
     const camps = byType[type];
     if (!camps || !camps.length) continue;
-    html += `<div class="opt-type-heading">${TYPE_LABELS[type] || type}</div>`;
+    html += `<div class="opt-type-heading" data-type="${type}">${TYPE_LABELS[type] || type}</div>`;
     for (const c of camps) {
       const m   = c.metrics;
       const ctr = m.impressions > 0 ? fmtPct(m.clicks / m.impressions) : '—';
       const cpc = m.clicks      > 0 ? fmt$(m.cost / m.clicks)           : '—';
       const mqlSqlPct = m.mql   > 0 ? fmtPct(m.sql / m.mql)            : '—';
       const issuesHtml = c.issues.length > 0
-        ? `<ul class="opt-issues">${c.issues.map(i =>
-            `<li>${i}</li>`).join('')}</ul>`
+        ? `<ul class="opt-issues">${c.issues.map(i => `<li>${i}</li>`).join('')}</ul>`
         : `<div class="opt-ok">✓ No issues found for this period</div>`;
       html += `
-<div class="opt-card sev-${c.severity}">
+<div class="opt-card sev-${c.severity}" data-sev="${c.severity}" data-type="${type}">
   <div class="opt-card-name">
     <span class="opt-sev-pill sev-${c.severity}">${SEV_LABELS[c.severity]}</span>
     ${c.display_name}
@@ -654,6 +716,69 @@ function renderOptimizationsTab() {
     }
   }
   grid.innerHTML = html;
+  applyOptFilter();
+}
+
+function setOptFilter(sev) {
+  _optFilter = sev;
+  if (sev !== 'all') _optShowOk = false;  // reset ok expansion on explicit filter
+  renderOptimizationsTab();
+}
+
+function toggleOptOk() {
+  _optShowOk = !_optShowOk;
+  applyOptFilter();
+}
+
+function applyOptFilter() {
+  const grid  = document.getElementById('opt-grid');
+  const cards = grid.querySelectorAll('.opt-card');
+  const headings = grid.querySelectorAll('.opt-type-heading');
+
+  // Remove any existing toggle
+  const oldToggle = grid.querySelector('.opt-ok-toggle');
+  if (oldToggle) oldToggle.remove();
+
+  let okCount = 0, okHidden = false;
+
+  for (const card of cards) {
+    const sev  = card.dataset.sev;
+    let visible = true;
+
+    if (_optFilter === 'all') {
+      if (sev === 'ok' && !_optShowOk) { visible = false; }
+    } else {
+      visible = (sev === _optFilter);
+    }
+
+    card.style.display = visible ? '' : 'none';
+    if (sev === 'ok' && !visible && _optFilter === 'all') {
+      okCount++;
+      okHidden = true;
+    }
+  }
+
+  // Hide type headings that have no visible cards
+  for (const heading of headings) {
+    const type = heading.dataset.type;
+    const visibleInType = [...cards].some(c => c.dataset.type === type && c.style.display !== 'none');
+    heading.style.display = visibleInType ? '' : 'none';
+  }
+
+  // Insert OK toggle at bottom
+  if (okHidden && okCount > 0) {
+    const toggle = document.createElement('div');
+    toggle.className = 'opt-ok-toggle';
+    toggle.textContent = `▾ Show ${okCount} passing campaign${okCount !== 1 ? 's' : ''}`;
+    toggle.onclick = toggleOptOk;
+    grid.appendChild(toggle);
+  } else if (_optShowOk && _optFilter === 'all') {
+    const toggle = document.createElement('div');
+    toggle.className = 'opt-ok-toggle';
+    toggle.textContent = `▴ Hide passing campaigns`;
+    toggle.onclick = toggleOptOk;
+    grid.appendChild(toggle);
+  }
 }
 
 // ── Main render ───────────────────────────────────────────────────────────────
