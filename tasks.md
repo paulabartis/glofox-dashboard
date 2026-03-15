@@ -407,6 +407,140 @@ LIMIT 200
 
 ---
 
+### Task: Date range selector — custom week/date picker across all tabs
+Allow selecting specific date ranges (e.g. 15 Feb – 28 Feb) and have all charts, tables, KPIs, and insights update accordingly.
+
+**Why:** The current period filter uses month-level presets. Weekly analysis (Sun–Sat) is the primary use pattern but isn't directly supported. A freeform date picker lets you isolate any specific window.
+
+**Desired behaviour:**
+- Date picker replaces or extends the current filter bar — two inputs: "From" and "To" (date, not just month)
+- Quick presets remain: "Last 7 days", "Last 28 days", "Last 3 months", "This year", custom
+- Selecting a range re-renders all Overview charts, KPI bar, funnel tables, Optimizations tab, Ad Group Issues tab
+- Week = Sunday–Saturday (highlight weekly boundaries in calendar if possible)
+- IS weekly chart is separate (always shows last 16 weeks) — not affected
+- Trend charts always show all-time — not affected
+
+**Implementation notes:**
+- Current period filter uses `fromYM` / `toYM` (YYYY-MM strings) — upgrade to full date (`fromDate` / `toDate`)
+- All `D.campaigns` filtering currently slices by year+month; upgrade to include partial-month day-level filtering if data supports it (it does — GadsData has `date` column)
+- Use native HTML `<input type="date">` — no library needed
+
+**Sub-tasks:**
+- [ ] Replace month dropdowns with `<input type="date">` pickers in the filter bar
+- [ ] Update `filterCampaigns()` JS to filter by date range (not just year/month)
+- [ ] Update quick presets to compute exact start/end dates (not month boundaries)
+- [ ] Verify all tabs re-render correctly on date change
+- [ ] Add "Glofox week" preset: Sun–Sat of the most recent complete week
+
+**How to test:**
+- Select 15 Feb – 28 Feb → KPI bar and charts update to that exact window
+- Select "Last 7 days" → same as selecting last Sun–Sat
+- Select a single week → Optimizations tab updates to that week's data
+
+---
+
+### Task: Adjustable widget sizes (1/3 · 2/3 · 3/3 layout)
+Make dashboard sections/charts resizable — each widget can be set to 1/3, 2/3, or 3/3 of the page width, similar to Mixpanel's dashboard layout.
+
+**Why:** Currently every section spans 100% width. Smaller charts like KPI cards or the MQL bar chart don't need full width; stacking them side by side would let more data fit on screen.
+
+**Desired behaviour:**
+- Each `<div class="section">` gets a width toggle in its top-right corner: `⅓` `⅔` `3/3`
+- Sections in the same "row" flow horizontally (CSS grid or flexbox wrapping)
+- Default widths: KPI bar = 3/3, funnel tables = 2/3 + 1/3, charts = 1/2 + 1/2
+- Layout persists in `localStorage` per section id so it survives page refresh
+- On mobile (< 768px) always render 3/3 (full width) regardless of setting
+
+**Implementation notes:**
+- Add a `data-widget-id` attr to each section div
+- Toggle buttons inject a CSS class (`w-33`, `w-66`, `w-100`) that maps to grid `grid-column: span N`
+- Wrap the Overview tab content in a `<div class="widget-grid">` with `grid-template-columns: repeat(3, 1fr)`
+- `localStorage.setItem('widget-sizes', JSON.stringify({...}))` on every toggle
+
+**Sub-tasks:**
+- [ ] Wrap Overview sections in a 3-column CSS grid container
+- [ ] Add size toggle buttons (⅓/⅔/3/3) to each section header
+- [ ] Add CSS for `w-33`, `w-66`, `w-100` classes
+- [ ] Add JS to toggle size and persist to localStorage
+- [ ] Load saved sizes on init
+- [ ] Add responsive override: all sections = full width below 768px
+
+**How to test:**
+- Toggle a chart to ⅓ → it shrinks to one column
+- Refresh page → size is remembered
+- Resize browser to mobile width → all sections go full width
+
+---
+
+### Task: Weekly executive summary tab
+A dedicated tab showing last week's (Sun–Sat) account story — what happened, what we changed, what improved.
+
+**Why:** Currently you have to piece together KPIs + Changes tab + Optimizations tab manually. The exec summary tab combines them into a single narrative: "Here's what happened last week and what to watch."
+
+**Sections:**
+1. **Week at a glance** — KPI comparison: this week vs last week for Spend, MQL, SQL, Cost/MQL, MQL→SQL %
+2. **What changed in the account** — filtered view of ChangeEvents tab (this week's changes only), grouped by type (Budget, Bids, Status, Creative)
+3. **What got better / worse** — automatic detection: which campaign type×region improved or dropped >10% on MQL, SQL, or Cost/MQL vs last week
+4. **Top issues to action this week** — top 3 high/medium optimization cards (from Campaign Optimizations tab), summarised as a bullet list
+
+**Data sources:** All already in payload — `D.campaigns`, `D.change_events`, `D.optimizations`
+**Week definition:** Glofox week = Sunday–Saturday. Current week = most recent complete Sun–Sat.
+
+**Sub-tasks:**
+- [ ] Add "Weekly Summary" tab button + div to `template.html`
+- [ ] Add `renderWeeklySummaryTab()` JS function
+- [ ] Build week-over-week comparison from `D.campaigns` (filter by ISO week)
+- [ ] Build "what changed" section from `D.change_events` filtered to this week
+- [ ] Build "got better / worse" delta detector (>10% swing on key metrics)
+- [ ] Build "top issues" list from `D.optimizations` (top 3 high/medium by cost)
+- [ ] No Python changes needed — all data in payload
+
+**How to test:**
+- Switch to Weekly Summary tab → see this week's KPIs vs last week
+- ChangeEvents this week should match what's visible in Account Changes tab filtered to this week
+- "Got better" section should reflect a real metric improvement (verify against Overview tab data)
+
+---
+
+### Task: Campaign Optimization insights — make them more actionable
+Current optimization cards show vague generic advice. Replace with specific, numbered next actions and opportunity sizing.
+
+**Why:** "Review lead scoring thresholds" is not actionable. "Raise keyword bids in [Ad Group X] — you lost 40% of impressions to rank" is.
+
+**Changes needed:**
+
+**1. Show top 3 worst ad groups within each card**
+Currently cards are at campaign_type × region level. Add a "Worst ad groups this period" sub-section to each card using `D.adgroups` — top 3 by cost with the relevant issue metric (CTR, CPC, 0 MQLs).
+
+**2. Rewrite issue text to be specific and numbered**
+Replace:
+- ❌ "Review lead scoring thresholds"
+- ✅ "1. Check if sales are rejecting MQLs from [campaign type] — current accept rate is X%. 2. Lower MQL score threshold by 5 points and monitor SQL volume for 2 weeks."
+
+Replace:
+- ❌ "A/B test new RSA headlines"
+- ✅ "1. Open Gym Mgmt · NAM in Google Ads → Ads → review asset performance. 2. Pause 'LOW' rated headlines. 3. Add 3 new headlines focused on [top keyword theme]."
+
+**3. Add opportunity sizing to P1/P2 issues**
+For each issue, show: "Fixing this to benchmark would save ~$X/mo" or "generate ~N more SQLs/mo."
+
+**4. Add direct Google Ads UI deep links**
+Add a "Open in Google Ads →" link that opens the campaign directly in the Google Ads UI (URL: `https://ads.google.com/aw/campaigns?campaignId=XXX`). Needs campaign IDs in the payload (add to sync script).
+
+**Sub-tasks:**
+- [ ] Add worst-3 ad groups sub-section to each opt card (JS only — data already in `D.adgroups`)
+- [ ] Rewrite P1/P2 issue text in `compute_optimizations()` to be numbered action steps
+- [ ] Add opportunity sizing calculation (delta from benchmark × avg period)
+- [ ] Add `fetch_campaign_ids()` to `sync_gads_to_sheet.py` — store campaign name → ID mapping
+- [ ] Pass campaign IDs through payload → add "Open in Google Ads →" link on each card
+
+**How to test:**
+- Each card shows 1–3 worst ad groups with their metric (not just campaign type totals)
+- Issue text reads as a numbered to-do list, not a suggestion
+- P1 issues show "~$X wasted" or "~N SQLs missed" opportunity size
+
+---
+
 ## Completed
 
 - [x] Google Ads API connection (`sync_gads_to_sheet.py`)
