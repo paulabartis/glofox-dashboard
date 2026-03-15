@@ -341,6 +341,76 @@ def write_adgroup_to_sheet(service, rows: list[dict]) -> None:
     print(f"  Written {len(rows)} data rows to '{ADGROUP_TAB}' tab.")
 
 
+def fetch_change_events(client: GoogleAdsClient, days: int = 14) -> list[dict]:
+    """
+    Fetch account change events from the last 14 days.
+    Covers: campaign status/budget edits, ad group changes, keyword changes, ad approvals.
+    Filters out pure automated bid-strategy changes (no user email).
+
+    Returns:
+        List of dicts: change_datetime, user_email, resource_type, operation,
+                       changed_fields, campaign_name
+    """
+    ga_service = client.get_service("GoogleAdsService")
+
+    query = """
+        SELECT
+            change_event.change_date_time,
+            change_event.user_email,
+            change_event.change_resource_type,
+            change_event.resource_change_operation,
+            change_event.changed_fields,
+            campaign.name
+        FROM change_event
+        WHERE change_event.change_date_time DURING LAST_14_DAYS
+        ORDER BY change_event.change_date_time DESC
+        LIMIT 300
+    """
+
+    try:
+        response = ga_service.search(customer_id=GLOFOX_CUSTOMER_ID, query=query)
+    except Exception as e:
+        print(f"  WARNING: Could not fetch change events: {e}")
+        return []
+
+    rows = []
+    for row in response:
+        ce = row.change_event
+
+        # Extract changed fields from FieldMask
+        try:
+            fields = ", ".join(ce.changed_fields.paths) if ce.changed_fields.paths else ""
+        except Exception:
+            fields = ""
+
+        # Resource type and operation as readable strings
+        try:
+            resource_type = ce.change_resource_type.name
+        except Exception:
+            resource_type = "UNKNOWN"
+        try:
+            operation = ce.resource_change_operation.name
+        except Exception:
+            operation = "UNKNOWN"
+
+        user = str(ce.user_email).strip() if ce.user_email else ""
+
+        # Skip pure automated bid-strategy noise (no user, bidding strategy update)
+        if not user and resource_type in ("BIDDING_STRATEGY", "AD_GROUP_BID_MODIFIER"):
+            continue
+
+        rows.append({
+            "change_datetime":  str(ce.change_date_time),
+            "user_email":       user or "Automated",
+            "resource_type":    resource_type,
+            "operation":        operation,
+            "changed_fields":   fields,
+            "campaign_name":    str(row.campaign.name) if row.campaign.name else "",
+        })
+
+    return rows
+
+
 def write_is_to_sheet(service, rows: list[dict]) -> None:
     """Clear ImpShareWeekly tab and write fresh weekly IS data with headers."""
     sheets = service.spreadsheets()
@@ -373,6 +443,41 @@ def write_is_to_sheet(service, rows: list[dict]) -> None:
     print(f"  Written {len(rows)} weekly rows to '{IS_TAB}' tab.")
 
 
+def write_change_events_to_sheet(service, rows: list[dict]) -> None:
+    """Clear ChangeEvents tab and write fresh change event data with headers."""
+    tab = "ChangeEvents"
+    sheets = service.spreadsheets()
+
+    ensure_tab_exists(service, tab)
+
+    sheets.values().clear(
+        spreadsheetId=SHEET_ID,
+        range=f"{tab}!A:F",
+    ).execute()
+
+    headers = ["DateTime", "User", "ResourceType", "Operation", "Campaign", "ChangedFields"]
+    values = [headers] + [
+        [
+            r["change_datetime"],
+            r["user_email"],
+            r["resource_type"],
+            r["operation"],
+            r["campaign_name"],
+            r["changed_fields"],
+        ]
+        for r in rows
+    ]
+
+    sheets.values().update(
+        spreadsheetId=SHEET_ID,
+        range=f"{tab}!A1",
+        valueInputOption="RAW",
+        body={"values": values},
+    ).execute()
+
+    print(f"  Written {len(rows)} change events to '{tab}' tab.")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -402,17 +507,22 @@ def main():
     ag_rows = fetch_adgroup_monthly(gads_client, args.months)
     print(f"  Retrieved {len(ag_rows)} ad group-month rows.")
 
-    print(f"[4/5] Fetching last 16 weeks of Impression Share data from Google Ads...")
+    print(f"[4/6] Fetching last 16 weeks of Impression Share data from Google Ads...")
     is_rows = fetch_impression_share_weekly(gads_client, weeks=16)
     print(f"  Retrieved {len(is_rows)} weekly IS rows.")
 
-    print(f"[5/5] Writing to Google Sheet...")
+    print(f"[5/6] Fetching last 14 days of account change events from Google Ads...")
+    change_rows = fetch_change_events(gads_client, days=14)
+    print(f"  Retrieved {len(change_rows)} change events.")
+
+    print(f"[6/6] Writing to Google Sheet...")
     sheets_service = get_sheets_service()
     write_to_sheet(sheets_service, rows)
     write_adgroup_to_sheet(sheets_service, ag_rows)
     write_is_to_sheet(sheets_service, is_rows)
+    write_change_events_to_sheet(sheets_service, change_rows)
 
-    print("\nDone! GadsData, AdGroupData, and ImpShareWeekly tabs are up to date.")
+    print("\nDone! GadsData, AdGroupData, ImpShareWeekly, and ChangeEvents tabs are up to date.")
 
 
 if __name__ == "__main__":

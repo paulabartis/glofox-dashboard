@@ -353,6 +353,31 @@ def load_campaigns_data(service) -> list[dict]:
     return result
 
 
+def load_change_events(service) -> list[dict]:
+    """
+    ChangeEvents tab (written by sync_gads_to_sheet.py).
+    Columns: DateTime | User | ResourceType | Operation | Campaign | ChangedFields
+    Returns empty list if tab doesn't exist yet.
+    """
+    try:
+        rows = read_tab(service, "ChangeEvents")
+    except Exception:
+        return []
+    result = []
+    for row in rows[1:]:  # skip header
+        if len(row) < 4:
+            continue
+        result.append({
+            "change_datetime": str(row[0]).strip(),
+            "user_email":      str(row[1]).strip() if len(row) > 1 else "",
+            "resource_type":   str(row[2]).strip() if len(row) > 2 else "",
+            "operation":       str(row[3]).strip() if len(row) > 3 else "",
+            "campaign_name":   str(row[4]).strip() if len(row) > 4 else "",
+            "changed_fields":  str(row[5]).strip() if len(row) > 5 else "",
+        })
+    return result
+
+
 def load_is_weekly(service) -> list[dict]:
     """
     ImpShareWeekly tab (written by sync_gads_to_sheet.py).
@@ -925,11 +950,13 @@ def main():
     monthly_summary = load_monthly_summary(service)
     adgroup_data = load_adgroup_data(service)
     is_weekly = load_is_weekly(service)
+    change_events = load_change_events(service)
     print(f"  GadsData: {len(gads_data)} rows")
     print(f"  CampaignsData (paid PPC): {len(campaigns_data)} rows")
     print(f"  MonthlySummary: {len(monthly_summary)} periods")
     print(f"  AdGroupData (paid PPC): {len(adgroup_data)} rows")
     print(f"  ImpShareWeekly: {len(is_weekly)} weeks")
+    print(f"  ChangeEvents: {len(change_events)} events")
 
     print("[3/5] Joining and processing data...")
     campaign_rows = build_campaign_rows(gads_data, campaigns_data)
@@ -956,6 +983,7 @@ def main():
         "optimizations":    optimizations,
         "ag_optimizations": ag_optimizations,
         "is_weekly":        is_weekly,
+        "change_events":    change_events,
     }
 
     print("[5/5] Rendering HTML...")

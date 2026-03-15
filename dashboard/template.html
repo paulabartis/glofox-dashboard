@@ -137,6 +137,37 @@
   .mql-chart-legend-line { width:16px; height:3px; background:#16A34A;
                            border-radius:2px; display:inline-block; }
 
+  /* ── Account Changes tab ── */
+  .changes-week-header {
+    font-size:12px; font-weight:700; color:#64748B; text-transform:uppercase;
+    letter-spacing:.6px; padding:10px 0 6px; border-bottom:2px solid #E2E8F0;
+    margin:16px 0 0; grid-column:1/-1;
+  }
+  .changes-week-header:first-child { margin-top:0; }
+  .changes-table { width:100%; border-collapse:collapse; }
+  .changes-table thead th {
+    padding:9px 12px; text-align:left; font-size:11px; font-weight:700;
+    color:#64748B; text-transform:uppercase; letter-spacing:.4px;
+    border-bottom:1px solid #E2E8F0; background:#F8FAFC; white-space:nowrap;
+  }
+  .changes-table tbody tr { border-bottom:1px solid #F1F5F9; transition:background .1s; }
+  .changes-table tbody tr:last-child { border-bottom:none; }
+  .changes-table tbody tr:hover { background:#F8FAFC; }
+  .changes-table tbody td { padding:9px 12px; font-size:13px; vertical-align:top; }
+  .changes-table tbody td:first-child { white-space:nowrap; color:#64748B; font-size:12px; }
+  .op-badge {
+    display:inline-block; font-size:10px; font-weight:700; padding:2px 7px;
+    border-radius:10px; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap;
+  }
+  .op-create { background:#DCFCE7; color:#15803D; }
+  .op-update { background:#EFF6FF; color:#1D4ED8; }
+  .op-remove { background:#FEE2E2; color:#B91C1C; }
+  .op-other  { background:#F1F5F9; color:#64748B; }
+  .changes-field { font-size:11px; color:#94A3B8; max-width:260px;
+                   word-break:break-word; line-height:1.4; }
+  .changes-automated { color:#94A3B8; font-style:italic; }
+  .changes-empty { color:#94A3B8; font-size:13px; padding:32px; text-align:center; }
+
   /* ── Footer ── */
   .footer-note {
     font-size: 12px; color: #94A3B8; margin-top: 32px;
@@ -281,6 +312,7 @@
     <button class="tab-btn" data-tab="adgroups">Ad Groups</button>
     <button class="tab-btn" data-tab="opts">Campaign Optimizations</button>
     <button class="tab-btn" data-tab="agissues">Ad Group Issues</button>
+    <button class="tab-btn" data-tab="changes">Account Changes</button>
   </div>
 
   <!-- Overview tab -->
@@ -423,6 +455,17 @@
       <div class="opt-grid" id="agissues-grid"></div>
     </div>
   </div><!-- /tab-agissues -->
+
+  <!-- Account Changes tab -->
+  <div id="tab-changes" style="display:none">
+    <div class="section">
+      <div class="section-title">
+        Account Changes
+        <span class="badge">Last 14 days · Google Ads change log</span>
+      </div>
+      <div id="changes-content"></div>
+    </div>
+  </div><!-- /tab-changes -->
 
   <div class="footer-note" id="footer-note"></div>
 </div>
@@ -934,6 +977,111 @@ function setAgFilter(sev) {
   renderAdGroupIssuesTab();
 }
 
+// ── Account Changes tab ───────────────────────────────────────────────────────
+function renderChangesTab() {
+  const wrap = document.getElementById('changes-content');
+  const events = D.change_events || [];
+
+  if (!events.length) {
+    wrap.innerHTML = '<div class="changes-empty">No change events found. Run the sync script to populate this tab.</div>';
+    return;
+  }
+
+  const RESOURCE_LABELS = {
+    CAMPAIGN: 'Campaign', AD_GROUP: 'Ad Group', AD: 'Ad',
+    AD_GROUP_CRITERION: 'Keyword', CAMPAIGN_CRITERION: 'Neg. Keyword',
+    CAMPAIGN_BUDGET: 'Budget', BIDDING_STRATEGY: 'Bidding Strategy',
+    FEED: 'Feed', FEED_ITEM: 'Feed Item',
+    AD_GROUP_BID_MODIFIER: 'Bid Modifier', UNKNOWN: 'Other',
+  };
+
+  // Parse ISO datetime → Date object + display strings
+  function parseEvent(ev) {
+    // change_datetime format: "2026-03-10 14:23:05+00:00"
+    const raw = ev.change_datetime.replace(' ', 'T');
+    const d = new Date(raw);
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const dateStr = MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate();
+    const timeStr = String(d.getUTCHours()).padStart(2,'0') + ':' + String(d.getUTCMinutes()).padStart(2,'0');
+    // ISO week Monday
+    const tmp = new Date(d);
+    tmp.setUTCHours(0,0,0,0);
+    tmp.setUTCDate(tmp.getUTCDate() - tmp.getUTCDay() + 1); // Monday
+    return { ...ev, dateStr, timeStr, weekMs: tmp.getTime(), weekLabel: MONTHS[tmp.getUTCMonth()] + ' ' + tmp.getUTCDate() };
+  }
+
+  const parsed = events.map(parseEvent);
+
+  // Group by week (descending)
+  const byWeek = {};
+  const weekOrder = [];
+  for (const ev of parsed) {
+    if (!byWeek[ev.weekMs]) { byWeek[ev.weekMs] = []; weekOrder.push(ev.weekMs); }
+    byWeek[ev.weekMs].push(ev);
+  }
+  weekOrder.sort((a, b) => b - a);  // most recent first
+
+  const now = Date.now();
+  const oneWeek = 7 * 24 * 60 * 60 * 1000;
+
+  function weekTitle(ms) {
+    const diff = now - ms;
+    if (diff < oneWeek)    return '📅 This week';
+    if (diff < 2*oneWeek)  return '📅 Last week';
+    const d = new Date(ms);
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '📅 Week of ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate();
+  }
+
+  function opBadge(op) {
+    const cls = op === 'CREATE' ? 'op-create' : op === 'REMOVE' ? 'op-remove' : op === 'UPDATE' ? 'op-update' : 'op-other';
+    const lbl = op === 'CREATE' ? 'New' : op === 'REMOVE' ? 'Removed' : op === 'UPDATE' ? 'Updated' : op;
+    return `<span class="op-badge ${cls}">${lbl}</span>`;
+  }
+
+  function abbrevFields(fields) {
+    if (!fields) return '';
+    // Strip common prefixes to keep it readable
+    return fields
+      .split(', ')
+      .map(f => f.replace(/^(campaign|ad_group|ad_group_criterion|campaign_budget)\./,''))
+      .slice(0, 5)
+      .join(', ');
+  }
+
+  let html = '';
+  for (const wk of weekOrder) {
+    const evs = byWeek[wk];
+    html += `<div class="changes-week-header">${weekTitle(wk)} <span style="font-weight:400;color:#94A3B8">(${evs.length} change${evs.length !== 1 ? 's' : ''})</span></div>`;
+    html += `<div class="table-wrap" style="margin-bottom:16px;">
+    <table class="changes-table">
+      <thead><tr>
+        <th>Date / Time</th><th>Who</th><th>Resource</th><th>Operation</th>
+        <th>Campaign</th><th>Fields Changed</th>
+      </tr></thead>
+      <tbody>`;
+    for (const ev of evs) {
+      const isAuto = ev.user_email === 'Automated';
+      const userCell = isAuto
+        ? `<span class="changes-automated">Automated</span>`
+        : `<span style="color:#1E293B">${ev.user_email}</span>`;
+      const resLabel = RESOURCE_LABELS[ev.resource_type] || ev.resource_type;
+      const fields   = abbrevFields(ev.changed_fields);
+      html += `<tr>
+        <td>${ev.dateStr} <span style="color:#94A3B8">${ev.timeStr}</span></td>
+        <td>${userCell}</td>
+        <td style="color:#475569">${resLabel}</td>
+        <td>${opBadge(ev.operation)}</td>
+        <td style="color:#1E293B;max-width:200px;word-break:break-word">${ev.campaign_name || '—'}</td>
+        <td class="changes-field">${fields || '—'}</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div>`;
+  }
+
+  wrap.innerHTML = html;
+}
+
 // ── IS Weekly chart ───────────────────────────────────────────────────────────
 let isChart = null;
 
@@ -1028,7 +1176,7 @@ function drillToOpts(campaignType, region) {
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === 'opts')
   );
-  ['tab-overview','tab-adgroups','tab-opts','tab-agissues'].forEach(id => {
+  ['tab-overview','tab-adgroups','tab-opts','tab-agissues','tab-changes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = id === 'tab-opts' ? '' : 'none';
   });
@@ -1177,9 +1325,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-adgroups').style.display  = tab === 'adgroups'  ? '' : 'none';
     document.getElementById('tab-opts').style.display      = tab === 'opts'      ? '' : 'none';
     document.getElementById('tab-agissues').style.display  = tab === 'agissues'  ? '' : 'none';
+    document.getElementById('tab-changes').style.display   = tab === 'changes'   ? '' : 'none';
     if (tab === 'adgroups') renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
     if (tab === 'opts')     renderOptimizationsTab();
     if (tab === 'agissues') renderAdGroupIssuesTab();
+    if (tab === 'changes')  renderChangesTab();
   });
 });
 
