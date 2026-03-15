@@ -353,6 +353,32 @@ def load_campaigns_data(service) -> list[dict]:
     return result
 
 
+def load_is_weekly(service) -> list[dict]:
+    """
+    ImpShareWeekly tab (written by sync_gads_to_sheet.py).
+    Columns: Week | Impressions | SearchIS | LostIS_Rank
+    Returns empty list if tab doesn't exist yet.
+    """
+    try:
+        rows = read_tab(service, "ImpShareWeekly")
+    except Exception:
+        return []  # tab not yet populated — chart will show empty state
+    result = []
+    for row in rows[1:]:  # skip header
+        if len(row) < 1:
+            continue
+        week = str(row[0]).strip()
+        if not week:
+            continue
+        result.append({
+            "week":         week,
+            "impressions":  safe_int(row[1]) if len(row) > 1 else 0,
+            "search_is":    safe_float(row[2]) if len(row) > 2 and row[2] != "" else None,
+            "lost_is_rank": safe_float(row[3]) if len(row) > 3 and row[3] != "" else None,
+        })
+    return result
+
+
 def load_monthly_summary(service) -> list[dict]:
     """
     MonthlySummary tab.
@@ -767,10 +793,12 @@ def main():
     campaigns_data = load_campaigns_data(service)
     monthly_summary = load_monthly_summary(service)
     adgroup_data = load_adgroup_data(service)
+    is_weekly = load_is_weekly(service)
     print(f"  GadsData: {len(gads_data)} rows")
     print(f"  CampaignsData (paid PPC): {len(campaigns_data)} rows")
     print(f"  MonthlySummary: {len(monthly_summary)} periods")
     print(f"  AdGroupData (paid PPC): {len(adgroup_data)} rows")
+    print(f"  ImpShareWeekly: {len(is_weekly)} weeks")
 
     print("[3/5] Joining and processing data...")
     campaign_rows = build_campaign_rows(gads_data, campaigns_data)
@@ -789,6 +817,7 @@ def main():
         "monthly_kpis":  monthly_summary,
         "adgroups":      adgroup_data,
         "optimizations": optimizations,
+        "is_weekly":     is_weekly,
     }
 
     print("[5/5] Rendering HTML...")

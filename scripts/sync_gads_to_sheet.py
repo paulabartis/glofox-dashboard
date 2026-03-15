@@ -28,7 +28,7 @@ import argparse
 import base64
 import json
 import os
-from datetime import date
+from datetime import date, timedelta
 
 from google.ads.googleads.client import GoogleAdsClient
 from google.oauth2.service_account import Credentials
@@ -39,6 +39,7 @@ from googleapiclient.discovery import build
 SHEET_ID = "1-M1R5RfWkQiQKvVnclI4d0KpSC1Ww042iCUv6IFe6mc"
 GADS_TAB = "GadsData"
 ADGROUP_TAB = "AdGroupData"
+IS_TAB = "ImpShareWeekly"
 GLOFOX_CUSTOMER_ID = "6129012053"
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -185,6 +186,76 @@ def fetch_adgroup_monthly(client: GoogleAdsClient, months: int) -> list[dict]:
     return rows
 
 
+def fetch_impression_share_weekly(client: GoogleAdsClient, weeks: int = 16) -> list[dict]:
+    """
+    Fetch Search Impression Share and Lost IS (Rank) for enabled Paid Search campaigns,
+    aggregated by ISO week using impression-weighted averaging.
+
+    Returns:
+        List of dicts: week (YYYY-MM-DD Monday), impressions, search_is, lost_is_rank
+    """
+    # Start from the Monday of the week `weeks` ago
+    today = date.today()
+    start = today - timedelta(weeks=weeks)
+    start = start - timedelta(days=start.weekday())  # snap back to Monday
+    end = today
+
+    ga_service = client.get_service("GoogleAdsService")
+
+    query = f"""
+        SELECT
+            segments.date,
+            metrics.impressions,
+            metrics.search_impression_share,
+            metrics.search_rank_lost_impression_share
+        FROM campaign
+        WHERE segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'
+            AND campaign.status = 'ENABLED'
+            AND campaign.advertising_channel_type = 'SEARCH'
+        ORDER BY segments.date
+    """
+
+    response = ga_service.search(customer_id=GLOFOX_CUSTOMER_ID, query=query)
+
+    # Impression-weighted aggregation per ISO week (Monday as key)
+    weekly: dict[date, dict] = {}
+    for row in response:
+        d = date.fromisoformat(row.segments.date)
+        week_start = d - timedelta(days=d.weekday())  # Monday
+        imp = row.metrics.impressions
+        try:
+            is_pct = float(row.metrics.search_impression_share)
+            is_pct = is_pct if 0.0 <= is_pct <= 1.0 else 0.0
+        except (TypeError, ValueError):
+            is_pct = 0.0
+        try:
+            rank_lost = float(row.metrics.search_rank_lost_impression_share)
+            rank_lost = rank_lost if 0.0 <= rank_lost <= 1.0 else 0.0
+        except (TypeError, ValueError):
+            rank_lost = 0.0
+
+        if week_start not in weekly:
+            weekly[week_start] = {"impressions": 0, "is_w": 0.0, "rank_w": 0.0}
+        weekly[week_start]["impressions"] += imp
+        weekly[week_start]["is_w"] += is_pct * imp
+        weekly[week_start]["rank_w"] += rank_lost * imp
+
+    rows = []
+    for ws in sorted(weekly.keys()):
+        w = weekly[ws]
+        imp = w["impressions"]
+        search_is  = round(w["is_w"]   / imp, 4) if imp > 0 else None
+        lost_is    = round(w["rank_w"] / imp, 4) if imp > 0 else None
+        rows.append({
+            "week":        ws.isoformat(),
+            "impressions": imp,
+            "search_is":   search_is,
+            "lost_is_rank": lost_is,
+        })
+
+    return rows
+
+
 # ── Google Sheet write ────────────────────────────────────────────────────────
 
 def ensure_tab_exists(service, tab_name: str) -> None:
@@ -270,6 +341,38 @@ def write_adgroup_to_sheet(service, rows: list[dict]) -> None:
     print(f"  Written {len(rows)} data rows to '{ADGROUP_TAB}' tab.")
 
 
+def write_is_to_sheet(service, rows: list[dict]) -> None:
+    """Clear ImpShareWeekly tab and write fresh weekly IS data with headers."""
+    sheets = service.spreadsheets()
+
+    ensure_tab_exists(service, IS_TAB)
+
+    sheets.values().clear(
+        spreadsheetId=SHEET_ID,
+        range=f"{IS_TAB}!A:D",
+    ).execute()
+
+    headers = ["Week", "Impressions", "SearchIS", "LostIS_Rank"]
+    values = [headers] + [
+        [
+            r["week"],
+            r["impressions"],
+            r["search_is"] if r["search_is"] is not None else "",
+            r["lost_is_rank"] if r["lost_is_rank"] is not None else "",
+        ]
+        for r in rows
+    ]
+
+    sheets.values().update(
+        spreadsheetId=SHEET_ID,
+        range=f"{IS_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": values},
+    ).execute()
+
+    print(f"  Written {len(rows)} weekly rows to '{IS_TAB}' tab.")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -282,7 +385,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"[1/3] Connecting to Google Ads API...")
+    print(f"[1/5] Connecting to Google Ads API...")
     try:
         gads_client = get_gads_client()
     except KeyError as e:
@@ -291,20 +394,25 @@ def main():
               "GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_CUSTOMER_ID")
         raise
 
-    print(f"[2/4] Fetching last {args.months} months of campaign data from Google Ads...")
+    print(f"[2/5] Fetching last {args.months} months of campaign data from Google Ads...")
     rows = fetch_gads_monthly(gads_client, args.months)
     print(f"  Retrieved {len(rows)} campaign-month rows.")
 
-    print(f"[3/4] Fetching last {args.months} months of ad group data from Google Ads...")
+    print(f"[3/5] Fetching last {args.months} months of ad group data from Google Ads...")
     ag_rows = fetch_adgroup_monthly(gads_client, args.months)
     print(f"  Retrieved {len(ag_rows)} ad group-month rows.")
 
-    print(f"[4/4] Writing to Google Sheet...")
+    print(f"[4/5] Fetching last 16 weeks of Impression Share data from Google Ads...")
+    is_rows = fetch_impression_share_weekly(gads_client, weeks=16)
+    print(f"  Retrieved {len(is_rows)} weekly IS rows.")
+
+    print(f"[5/5] Writing to Google Sheet...")
     sheets_service = get_sheets_service()
     write_to_sheet(sheets_service, rows)
     write_adgroup_to_sheet(sheets_service, ag_rows)
+    write_is_to_sheet(sheets_service, is_rows)
 
-    print("\nDone! GadsData and AdGroupData tabs are up to date.")
+    print("\nDone! GadsData, AdGroupData, and ImpShareWeekly tabs are up to date.")
 
 
 if __name__ == "__main__":
