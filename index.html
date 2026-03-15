@@ -392,6 +392,27 @@
     </div>
   </div>
 
+  <!-- Trend Charts -->
+  <div class="section">
+    <div class="section-title">
+      Monthly Spend Trend
+      <span class="badge">By campaign type · all time</span>
+    </div>
+    <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
+      <canvas id="chart-spend-trend" height="110"></canvas>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">
+      Monthly MQL &amp; SQL Trend
+      <span class="badge">All campaign types combined</span>
+    </div>
+    <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
+      <canvas id="chart-mql-trend" height="110"></canvas>
+    </div>
+  </div>
+
   <!-- IS Weekly Chart -->
   <div class="section">
     <div class="section-title">
@@ -1082,6 +1103,149 @@ function renderChangesTab() {
   wrap.innerHTML = html;
 }
 
+// ── Trend charts ─────────────────────────────────────────────────────────────
+const TYPE_COLOURS = {
+  GymManagement: '#3B82F6',
+  Modality:      '#8B5CF6',
+  Branded:       '#10B981',
+  Competitor:    '#F59E0B',
+  'Demand Gen':  '#EC4899',
+  Other:         '#94A3B8',
+};
+const TYPE_DISPLAY = {
+  GymManagement: 'Gym Mgmt', Modality: 'Modality', Branded: 'Branded',
+  Competitor: 'Competitor', 'Demand Gen': 'Demand Gen', Other: 'Other',
+};
+
+let spendTrendChart = null;
+let mqlTrendChart   = null;
+
+function renderTrendCharts() {
+  // Use ALL campaign rows regardless of period filter — trend = all-time view
+  const rows = D.campaigns || [];
+
+  // Build sorted month labels (YYYY-MM) across all data
+  const monthSet = new Set();
+  for (const r of rows) {
+    if (r.year && r.month) monthSet.add(`${r.year}-${String(r.month).padStart(2,'0')}`);
+  }
+  const months = [...monthSet].sort();
+  if (!months.length) return;
+
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const monthLabels = months.map(m => {
+    const [y, mo] = m.split('-').map(Number);
+    return MONTHS_SHORT[mo - 1] + ' ' + String(y).slice(2);
+  });
+
+  // ── 1. Spend trend — stacked bar by campaign type ──────────────────────────
+  // Only GadsData rows have real cost (_is_gads_agg implied by cost>0 and mql===0,sql===0)
+  const spendByType = {}; // campaign_type → { monthKey → cost }
+  const typeOrder = [];
+  for (const r of rows) {
+    if (!r.cost || r.cost === 0) continue;
+    const ct = r.campaign_type;
+    const mk = `${r.year}-${String(r.month).padStart(2,'0')}`;
+    if (!spendByType[ct]) { spendByType[ct] = {}; typeOrder.push(ct); }
+    spendByType[ct][mk] = (spendByType[ct][mk] || 0) + r.cost;
+  }
+  // Deduplicate typeOrder
+  const spendTypes = [...new Set(typeOrder)];
+
+  const spendDatasets = spendTypes.map(ct => ({
+    label: TYPE_DISPLAY[ct] || ct,
+    data:  months.map(m => Math.round((spendByType[ct][m] || 0))),
+    backgroundColor: TYPE_COLOURS[ct] || '#94A3B8',
+    borderRadius: 3,
+    borderSkipped: false,
+  }));
+
+  if (spendTrendChart) { spendTrendChart.destroy(); spendTrendChart = null; }
+  const spendCtx = document.getElementById('chart-spend-trend');
+  if (spendCtx && spendDatasets.length) {
+    spendTrendChart = new Chart(spendCtx.getContext('2d'), {
+      type: 'bar',
+      data: { labels: monthLabels, datasets: spendDatasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 }, padding: 12, boxWidth: 12 } },
+          tooltip: {
+            callbacks: {
+              label: c => ` ${c.dataset.label}: $${c.raw.toLocaleString()}`,
+            },
+          },
+        },
+        scales: {
+          x: { stacked: true, ticks: { font: { size: 11 } }, grid: { display: false } },
+          y: {
+            stacked: true,
+            ticks: { font: { size: 11 }, callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v) },
+            grid: { color: '#F1F5F9' },
+          },
+        },
+      },
+    });
+  }
+
+  // ── 2. MQL & SQL trend — dual line ────────────────────────────────────────
+  // Only CampaignsData rows have real MQL/SQL (cost=0 rows)
+  const mqlByMonth = {}; // monthKey → mql
+  const sqlByMonth = {}; // monthKey → sql
+  for (const r of rows) {
+    if (r.mql === 0 && r.sql === 0) continue;
+    const mk = `${r.year}-${String(r.month).padStart(2,'0')}`;
+    mqlByMonth[mk] = (mqlByMonth[mk] || 0) + r.mql;
+    sqlByMonth[mk] = (sqlByMonth[mk] || 0) + r.sql;
+  }
+
+  if (mqlTrendChart) { mqlTrendChart.destroy(); mqlTrendChart = null; }
+  const mqlCtx = document.getElementById('chart-mql-trend');
+  if (mqlCtx) {
+    mqlTrendChart = new Chart(mqlCtx.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: monthLabels,
+        datasets: [
+          {
+            label: 'MQL',
+            data: months.map(m => mqlByMonth[m] || 0),
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59,130,246,.08)',
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: 'SQL',
+            data: months.map(m => sqlByMonth[m] || 0),
+            borderColor: '#10B981',
+            backgroundColor: 'rgba(16,185,129,.08)',
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.3,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 }, padding: 12 } },
+          tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.raw}` } },
+        },
+        scales: {
+          x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+          y: { ticks: { font: { size: 11 } }, grid: { color: '#F1F5F9' }, min: 0 },
+        },
+      },
+    });
+  }
+}
+
 // ── IS Weekly chart ───────────────────────────────────────────────────────────
 let isChart = null;
 
@@ -1280,6 +1444,7 @@ function render(fromYM, toYM) {
   renderCompareCard('card-other',  'Paid Other',  'Facebook, Display &amp; Demand Gen campaigns', pother);
   renderCompareChart(search, pother);
   renderMqlSqlChart(fc);
+  renderTrendCharts();
   renderIsWeeklyChart();
 }
 
