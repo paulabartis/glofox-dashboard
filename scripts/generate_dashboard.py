@@ -225,37 +225,41 @@ def load_gads_data(service) -> list[dict]:
 
 def parse_adgroup_campaign_name(name: str) -> dict:
     """
-    Parse Google Ads readable campaign names (e.g. 'Competitor Brands USA').
-    These are different from the Looker-style names used in CampaignsData.
+    Parse Google Ads readable campaign names into campaign_type + region.
+    Scans ALL words (not just last) so suffixes like 'tCPA', 'Test', 'May 2025'
+    don't break classification.
 
-    Returns dict with campaign_type and region.
+    Region priority: APAC > NAM > EMEA (default / WW / UK / EU / global).
+    Region tokens (case-insensitive, matched as whole tokens after splitting on
+    spaces, underscores and hyphens):
+      APAC, AU                           → APAC
+      USA, US, CA, NAM, NA, "NA TIER"   → NAM
+      UK, WW, EU, EMEA, GLOBAL          → EMEA  (also the default)
     """
     name_upper = name.upper()
-    words = name.split()
-    last = words[-1].upper() if words else ""
 
-    # Region from last word
-    if last == "APAC":
+    # Tokenise on spaces, underscores, hyphens so 'PMax_Prospect_US' → ['US']
+    import re as _re
+    tokens = set(_re.split(r'[\s_\-]+', name_upper))
+
+    # Region — check all tokens, priority: APAC > NAM > EMEA
+    if tokens & {"APAC", "AU"}:
         region = "APAC"
-    elif last == "UK":
-        region = "EMEA"
-    elif last in ("USA", "CA"):
+    elif tokens & {"USA", "US", "CA", "NAM", "NA"}:
         region = "NAM"
-    elif last == "WW":
-        region = "EMEA"
     else:
-        region = "EMEA"  # default for BF campaigns etc. → EMEA
+        region = "EMEA"  # WW, UK, EU, EMEA, Global, or unrecognised → EMEA
 
     # Campaign type from name content
     if "COMPETITOR" in name_upper:
         campaign_type = "Competitor"
-    elif "GYM MANAGEMENT" in name_upper:
+    elif "GYM MANAGEMENT" in name_upper or "GYM_MANAGEMENT" in name_upper or "GYMMGMT" in name_upper:
         campaign_type = "GymManagement"
     elif "MODALITY" in name_upper:
         campaign_type = "Modality"
     elif "BRANDED" in name_upper or "GLOFOX" in name_upper:
         campaign_type = "Branded"
-    elif "PROSPECT" in name_upper or "RETARGET" in name_upper:
+    elif any(t in name_upper for t in ("PROSPECT", "RETARGET", "PMAX", "DG ", "DEMAND GEN")):
         campaign_type = "Demand Gen"
     else:
         campaign_type = "Other"
