@@ -342,6 +342,32 @@ ORDER BY segments.week DESC
 
 ---
 
+### Task: IS chart — campaign-level toggle filter
+Allow the weekly IS chart to be filtered by individual campaign (or campaign type), so you can see which specific campaigns are dragging down overall IS or have high Lost IS Rank.
+
+**Why:** Account-level IS hides outliers — one campaign with 20% IS can mask others at 80%. Per-campaign breakdown makes it actionable.
+
+**Approach:**
+- Store IS data per-campaign in `ImpShareWeekly` tab (add `Campaign` column to the sheet)
+- Update `fetch_impression_share_weekly()` to return per-campaign rows (not aggregated across all)
+- Update `write_is_to_sheet()` to include campaign name column
+- In `template.html`: add toggle buttons above the IS chart ("All" + one per campaign type or per campaign name)
+- When a campaign is selected, filter `D.is_weekly` to that campaign and re-render the chart
+- "All" mode = impression-weighted average across all (current behaviour)
+
+**Sub-tasks:**
+- [ ] Add `campaign_name` column to IS fetch query + sheet write
+- [ ] Update `load_is_weekly()` in `generate_dashboard.py` to include campaign field
+- [ ] Add filter toggle bar above `chart-is-weekly` canvas in `template.html`
+- [ ] JS: build per-campaign aggregates on the fly from `D.is_weekly` when filter changes
+
+**How to test:**
+- Run sync, confirm `ImpShareWeekly` tab has Campaign column
+- In dashboard: toggle filter shows individual campaign IS lines
+- "All" still shows weighted aggregate
+
+---
+
 ### Task: Weekly account changes tab
 Show what changed in the Google Ads account week-over-week — new/paused campaigns, significant budget or spend shifts, new ad groups.
 

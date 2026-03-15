@@ -280,6 +280,7 @@
     <button class="tab-btn active" data-tab="overview">Overview</button>
     <button class="tab-btn" data-tab="adgroups">Ad Groups</button>
     <button class="tab-btn" data-tab="opts">Campaign Optimizations</button>
+    <button class="tab-btn" data-tab="agissues">Ad Group Issues</button>
   </div>
 
   <!-- Overview tab -->
@@ -409,6 +410,19 @@
       <div class="opt-grid" id="opt-grid"></div>
     </div>
   </div><!-- /tab-opts -->
+
+  <!-- Ad Group Issues tab -->
+  <div id="tab-agissues" style="display:none">
+    <div class="section">
+      <div class="section-title">
+        Ad Group Issues
+        <span class="badge" id="agissues-badge">Last 3 months</span>
+      </div>
+      <p class="opt-period-note" id="agissues-note">Flagged ad groups with high cost + low CTR, CPC outliers, or dormant status.</p>
+      <div class="opt-filter-bar" id="agissues-filter-bar"></div>
+      <div class="opt-grid" id="agissues-grid"></div>
+    </div>
+  </div><!-- /tab-agissues -->
 
   <div class="footer-note" id="footer-note"></div>
 </div>
@@ -827,6 +841,99 @@ function applyOptFilter() {
   }
 }
 
+// ── Ad Group Issues tab ───────────────────────────────────────────────────────
+let _agFilter = 'all';
+
+function renderAdGroupIssuesTab() {
+  const opts = D.ag_optimizations || [];
+  const grid = document.getElementById('agissues-grid');
+  const bar  = document.getElementById('agissues-filter-bar');
+
+  if (!opts.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No ad group issues found for the last 3 months. 🎉</div>';
+    bar.innerHTML  = '';
+    return;
+  }
+
+  // Severity counts
+  const counts = { high: 0, medium: 0, low: 0 };
+  for (const o of opts) counts[o.severity] = (counts[o.severity] || 0) + 1;
+
+  // Filter bar
+  const SEV_ICONS = { high: '🔴', medium: '🟡', low: '🔵' };
+  const sevButtons = ['high', 'medium', 'low']
+    .filter(s => counts[s] > 0)
+    .map(s => `<button class="opt-filter-btn f-${s}${_agFilter === s ? ' active' : ''}" onclick="setAgFilter('${s}')">
+      ${SEV_ICONS[s]} ${SEV_LABELS[s]}<span class="opt-count-chip">${counts[s]}</span>
+    </button>`).join('');
+  bar.innerHTML = `
+    <span class="opt-filter-label">Filter:</span>
+    <button class="opt-filter-btn${_agFilter === 'all' ? ' active' : ''}" onclick="setAgFilter('all')">All</button>
+    ${sevButtons}`;
+
+  // Group by campaign name, already sorted by severity+cost from Python
+  const byCampaign = {};
+  const campOrder  = [];
+  for (const o of opts) {
+    if (_agFilter !== 'all' && o.severity !== _agFilter) continue;
+    if (!byCampaign[o.campaign]) {
+      byCampaign[o.campaign] = [];
+      campOrder.push(o.campaign);
+    }
+    byCampaign[o.campaign].push(o);
+  }
+
+  if (!campOrder.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No issues match this filter.</div>';
+    return;
+  }
+
+  let html = '';
+  for (const camp of campOrder) {
+    const adgroups = byCampaign[camp];
+    // Campaign header shows worst severity in the group
+    const worstSev = adgroups[0].severity;
+    html += `<div class="opt-type-heading" style="display:flex;align-items:center;gap:8px;">
+      <span class="opt-sev-pill sev-${worstSev}" style="float:none">${SEV_LABELS[worstSev]}</span>
+      <span>${camp}</span>
+    </div>`;
+
+    for (const o of adgroups) {
+      const m   = o.metrics;
+      const ctr = m.impressions > 0 ? fmtPct(m.ctr) : '—';
+      const cpc = m.clicks      > 0 ? fmt$(m.cpc)   : '—';
+      const issuesHtml = o.issues.map(i => `<li>${i}</li>`).join('');
+      html += `
+<div class="opt-card sev-${o.severity}" data-sev="${o.severity}">
+  <div class="opt-card-name">
+    <span class="opt-sev-pill sev-${o.severity}">${SEV_LABELS[o.severity]}</span>
+    ${o.adgroup}
+  </div>
+  <div class="opt-badges">
+    <span class="opt-badge opt-badge-type">${TYPE_LABELS[o.campaign_type] || o.campaign_type}</span>
+    <span class="opt-badge opt-badge-region">${o.region}</span>
+  </div>
+  <div class="opt-metrics">
+    <div class="opt-metric"><div class="opt-metric-label">Spend</div><div class="opt-metric-val">${fmt$(m.cost)}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">Impressions</div><div class="opt-metric-val">${fmtN(m.impressions)}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">Clicks</div><div class="opt-metric-val">${fmtN(m.clicks)}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">CTR</div><div class="opt-metric-val">${ctr}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">CPC</div><div class="opt-metric-val">${cpc}</div></div>
+    <div class="opt-metric"><div class="opt-metric-label">Avg CPC</div><div class="opt-metric-val">${m.avg_cpc > 0 ? fmt$(m.avg_cpc) : '—'}</div></div>
+  </div>
+  <ul class="opt-issues">${issuesHtml}</ul>
+</div>`;
+    }
+  }
+
+  grid.innerHTML = html;
+}
+
+function setAgFilter(sev) {
+  _agFilter = sev;
+  renderAdGroupIssuesTab();
+}
+
 // ── IS Weekly chart ───────────────────────────────────────────────────────────
 let isChart = null;
 
@@ -921,7 +1028,7 @@ function drillToOpts(campaignType, region) {
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === 'opts')
   );
-  ['tab-overview','tab-adgroups','tab-opts'].forEach(id => {
+  ['tab-overview','tab-adgroups','tab-opts','tab-agissues'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = id === 'tab-opts' ? '' : 'none';
   });
@@ -1066,11 +1173,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === tab)
     );
-    document.getElementById('tab-overview').style.display = tab === 'overview' ? '' : 'none';
-    document.getElementById('tab-adgroups').style.display = tab === 'adgroups' ? '' : 'none';
-    document.getElementById('tab-opts').style.display     = tab === 'opts'      ? '' : 'none';
+    document.getElementById('tab-overview').style.display  = tab === 'overview'  ? '' : 'none';
+    document.getElementById('tab-adgroups').style.display  = tab === 'adgroups'  ? '' : 'none';
+    document.getElementById('tab-opts').style.display      = tab === 'opts'      ? '' : 'none';
+    document.getElementById('tab-agissues').style.display  = tab === 'agissues'  ? '' : 'none';
     if (tab === 'adgroups') renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
     if (tab === 'opts')     renderOptimizationsTab();
+    if (tab === 'agissues') renderAdGroupIssuesTab();
   });
 });
 

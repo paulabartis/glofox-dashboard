@@ -760,6 +760,137 @@ def compute_optimizations(
     return result
 
 
+# ── Ad Group Optimizations ────────────────────────────────────────────────────
+
+def compute_adgroup_optimizations(adgroup_data: list[dict]) -> list[dict]:
+    """
+    Flag ad-group-level issues from AdGroupData over the last 3 months.
+
+    Issues checked (per ad group):
+      P1 – Cost > $200 with 0 clicks       (bid/QS/targeting problem)
+      P1 – Cost > $200 with CTR < 0.2%     (severely under-performing)
+      P2 – CPC > 2× campaign-type average  (overpaying relative to peers)
+      P2 – Impressions > 5k, CTR < 0.5%   (messaging/relevance issue, Search only)
+      P3 – Previously active, now dormant  (0 impressions this period)
+
+    Returns only ad groups with at least one issue (OK ad groups are excluded to
+    keep the list focused).
+    """
+    today = date.today()
+    # Compute cutoff for last 3 months
+    cutoff_month = today.month - 3
+    cutoff_year  = today.year
+    if cutoff_month <= 0:
+        cutoff_month += 12
+        cutoff_year  -= 1
+    cutoff_ym  = cutoff_year * 100 + cutoff_month
+    current_ym = today.year * 100 + today.month
+
+    # Separate window rows from historical (for dormant check)
+    window_rows = [r for r in adgroup_data
+                   if cutoff_ym <= r["year"] * 100 + r["month"] <= current_ym]
+
+    # Aggregate by (campaign, adgroup) over the 3-month window
+    agg: dict[tuple, dict] = {}
+    for r in window_rows:
+        key = (r["campaign"], r["adgroup"])
+        if key not in agg:
+            agg[key] = {
+                "campaign":      r["campaign"],
+                "adgroup":       r["adgroup"],
+                "campaign_type": r.get("campaign_type", "Other"),
+                "region":        r.get("region", ""),
+                "impressions": 0, "clicks": 0, "cost": 0.0,
+            }
+        agg[key]["impressions"] += r["impressions"]
+        agg[key]["clicks"]      += r["clicks"]
+        agg[key]["cost"]        += r["cost"]
+
+    # Campaign-type average CPC (for the 2× threshold)
+    type_totals: dict[str, dict] = {}
+    for ag in agg.values():
+        ct = ag["campaign_type"]
+        if ct not in type_totals:
+            type_totals[ct] = {"cost": 0.0, "clicks": 0}
+        type_totals[ct]["cost"]   += ag["cost"]
+        type_totals[ct]["clicks"] += ag["clicks"]
+    avg_cpc_by_type = {
+        ct: v["cost"] / v["clicks"] if v["clicks"] > 0 else 0.0
+        for ct, v in type_totals.items()
+    }
+
+    # Set of (campaign, adgroup) pairs that had impressions in prior months
+    prior_active = {
+        (r["campaign"], r["adgroup"])
+        for r in adgroup_data
+        if r["year"] * 100 + r["month"] < cutoff_ym and r["impressions"] > 0
+    }
+
+    results = []
+    for ag in agg.values():
+        imp  = ag["impressions"]
+        clk  = ag["clicks"]
+        cost = ag["cost"]
+        ctr  = clk / imp if imp > 0 else 0.0
+        cpc  = cost / clk if clk > 0 else 0.0
+        avg_cpc = avg_cpc_by_type.get(ag["campaign_type"], 0.0)
+        key  = (ag["campaign"], ag["adgroup"])
+
+        issues: list[tuple[int, str]] = []
+
+        # P1 – Spend with no clicks
+        if cost > 200 and clk == 0:
+            issues.append((1, f"${cost:,.0f} spent but 0 clicks — check bid, QS, or targeting"))
+
+        # P1 – Very low CTR on meaningful spend
+        if cost > 200 and imp > 0 and ctr < 0.002:
+            issues.append((1, f"CTR {ctr*100:.2f}% on ${cost:,.0f} spend — severely under-performing"))
+
+        # P2 – CPC outlier vs type average
+        if avg_cpc > 0 and clk >= 10 and cpc > 2 * avg_cpc:
+            issues.append((2,
+                f"CPC ${cpc:.2f} is {cpc/avg_cpc:.1f}× the {ag['campaign_type']} average "
+                f"(${avg_cpc:.2f}) — review bids"))
+
+        # P2 – High impressions, low CTR (Search)
+        if imp >= 5000 and ctr < 0.005 and "Search" not in ag.get("campaign_type", ""):
+            issues.append((2, f"CTR {ctr*100:.2f}% on {imp:,} impressions — messaging or relevance issue"))
+
+        # P3 – Gone dormant
+        if imp == 0 and cost == 0 and key in prior_active:
+            issues.append((3, "0 impressions this period — ad group may have gone dormant"))
+
+        if not issues:
+            continue  # only flag ad groups with real problems
+
+        priorities = [p for p, _ in issues]
+        if   any(p <= 1 for p in priorities): severity = "high"
+        elif any(p <= 2 for p in priorities): severity = "medium"
+        else:                                  severity = "low"
+
+        results.append({
+            "campaign":      ag["campaign"],
+            "adgroup":       ag["adgroup"],
+            "campaign_type": ag["campaign_type"],
+            "region":        ag["region"],
+            "severity":      severity,
+            "metrics": {
+                "impressions": imp,
+                "clicks":      clk,
+                "cost":        round(cost, 2),
+                "ctr":         round(ctr, 4),
+                "cpc":         round(cpc, 2),
+                "avg_cpc":     round(avg_cpc, 2),
+            },
+            "issues": [text for _, text in sorted(issues)],
+        })
+
+    # Sort: severity first, then cost descending within severity
+    _SEV = {"high": 0, "medium": 1, "low": 2}
+    results.sort(key=lambda x: (_SEV.get(x["severity"], 9), -x["metrics"]["cost"]))
+    return results
+
+
 # ── HTML generation ───────────────────────────────────────────────────────────
 
 def render_html(template_path: str, data: dict) -> str:
@@ -811,13 +942,20 @@ def main():
     print(f"  Optimizations: {len(optimizations)} campaigns "
           f"({high} high, {medium} medium priority)")
 
+    ag_optimizations = compute_adgroup_optimizations(adgroup_data)
+    ag_high   = sum(1 for o in ag_optimizations if o["severity"] == "high")
+    ag_medium = sum(1 for o in ag_optimizations if o["severity"] == "medium")
+    print(f"  Ad Group Issues: {len(ag_optimizations)} ad groups "
+          f"({ag_high} high, {ag_medium} medium priority)")
+
     dashboard_data = {
         "generated_at":  date.today().isoformat(),
         "campaigns":     campaign_rows,
         "monthly_kpis":  monthly_summary,
         "adgroups":      adgroup_data,
-        "optimizations": optimizations,
-        "is_weekly":     is_weekly,
+        "optimizations":    optimizations,
+        "ag_optimizations": ag_optimizations,
+        "is_weekly":        is_weekly,
     }
 
     print("[5/5] Rendering HTML...")
