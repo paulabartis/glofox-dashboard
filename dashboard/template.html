@@ -114,6 +114,29 @@
   .cc-metric .cc-val { font-size: 20px; font-weight: 700; color: #1E293B; margin-top: 3px; }
   .cc-metric .cc-sub { font-size: 11px; color: #94A3B8; }
 
+  /* ── MQL→SQL bar chart ── */
+  .mql-chart-wrap   { padding:4px 0; }
+  .mql-chart-row    { display:flex; align-items:center; gap:10px; padding:6px 0;
+                      border-bottom:1px solid #F1F5F9; }
+  .mql-chart-row:last-child { border-bottom:none; }
+  .mql-chart-label  { width:160px; font-size:12px; color:#475569; flex-shrink:0; }
+  .mql-chart-bar-wrap { flex:1; background:#F1F5F9; border-radius:4px; height:16px;
+                        position:relative; overflow:visible; }
+  .mql-chart-bar    { height:100%; border-radius:4px; transition:width .3s; }
+  .mql-chart-goalline { position:absolute; top:-4px; bottom:-4px; left:50%;
+                        width:2px; background:#16A34A; opacity:.7; border-radius:1px;
+                        pointer-events:none; }
+  .mql-chart-val    { width:52px; font-size:12px; font-weight:600; text-align:right;
+                      flex-shrink:0; }
+  .mql-chart-row.clickable { cursor:pointer; }
+  .mql-chart-row.clickable:hover .mql-chart-label { color:#2563EB; text-decoration:underline; }
+  .mql-chart-row.clickable .mql-chart-val::after { content:' →'; color:#2563EB; font-size:11px; }
+  .mql-chart-empty  { color:#94A3B8; font-size:13px; padding:12px 0; }
+  .mql-chart-legend { font-size:11px; color:#64748B; margin-top:10px;
+                      display:flex; align-items:center; gap:6px; }
+  .mql-chart-legend-line { width:16px; height:3px; background:#16A34A;
+                           border-radius:2px; display:inline-block; }
+
   /* ── Footer ── */
   .footer-note {
     font-size: 12px; color: #94A3B8; margin-top: 32px;
@@ -313,6 +336,15 @@
         <tbody id="tbody-region-type"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- MQL→SQL Conversion Chart -->
+  <div class="section">
+    <div class="section-title">
+      MQL→SQL Conversion Rate by Campaign
+      <span class="badge" style="background:#DCFCE7;color:#15803D;">Goal: 25%</span>
+    </div>
+    <div id="mql-chart"></div>
   </div>
 
   <!-- Paid Search vs Paid Other -->
@@ -693,7 +725,7 @@ function renderOptimizationsTab() {
         ? `<ul class="opt-issues">${c.issues.map(i => `<li>${i}</li>`).join('')}</ul>`
         : `<div class="opt-ok">✓ No issues found for this period</div>`;
       html += `
-<div class="opt-card sev-${c.severity}" data-sev="${c.severity}" data-type="${type}">
+<div class="opt-card sev-${c.severity}" data-sev="${c.severity}" data-type="${type}" id="opt-card-${slugify(c.campaign_type)}-${slugify(c.region)}">
   <div class="opt-card-name">
     <span class="opt-sev-pill sev-${c.severity}">${SEV_LABELS[c.severity]}</span>
     ${c.display_name}
@@ -781,6 +813,99 @@ function applyOptFilter() {
   }
 }
 
+// ── MQL→SQL bar chart ────────────────────────────────────────────────────────
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function drillToOpts(campaignType, region) {
+  // Switch to Campaign Optimizations tab
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === 'opts')
+  );
+  ['tab-overview','tab-adgroups','tab-opts'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = id === 'tab-opts' ? '' : 'none';
+  });
+  renderOptimizationsTab();
+  // Show all severities so the card is visible regardless of current filter
+  _optFilter = 'all';
+  _optShowOk = true;
+  applyOptFilter();
+  // Scroll to matching card + brief highlight
+  requestAnimationFrame(() => {
+    const cardId = 'opt-card-' + slugify(campaignType) + '-' + slugify(region);
+    const card = document.getElementById(cardId);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.outline = '3px solid #2563EB';
+      card.style.outlineOffset = '2px';
+      setTimeout(() => { card.style.outline = ''; card.style.outlineOffset = ''; }, 2000);
+    }
+  });
+}
+
+function renderMqlSqlChart(fc) {
+  const wrap = document.getElementById('mql-chart');
+  if (!wrap) return;
+
+  // Aggregate MQL/SQL — skip GadsData cost-only rows (mql=0 and sql=0)
+  const g = {};
+  for (const r of fc) {
+    if (r.mql === 0 && r.sql === 0) continue;
+    const k = r.campaign_type + '||' + r.region;
+    if (!g[k]) g[k] = { campaign_type: r.campaign_type, region: r.region, mql: 0, sql: 0 };
+    g[k].mql += r.mql;
+    g[k].sql += r.sql;
+  }
+
+  const rows = Object.values(g).filter(r => r.mql > 0);
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="mql-chart-empty">No conversion data for this period.</div>';
+    return;
+  }
+
+  // Sort: below goal first (worst first), then above goal (best first)
+  rows.sort((a, b) => {
+    const ra = a.sql / a.mql, rb = b.sql / b.mql;
+    const aOk = ra >= 0.25, bOk = rb >= 0.25;
+    if (aOk !== bOk) return aOk ? 1 : -1;
+    return aOk ? rb - ra : ra - rb;
+  });
+
+  // Scale: 0–50% → goal line at exactly 50% of bar-wrap width
+  const SCALE = 0.50;
+  const TYPE_LABEL = {
+    GymManagement:'Gym Mgmt', Modality:'Modality', Branded:'Branded',
+    Competitor:'Competitor', DemandGen:'Demand Gen', 'Demand Gen':'Demand Gen'
+  };
+
+  const rowsHtml = rows.map(r => {
+    const rate      = r.sql / r.mql;
+    const barW      = Math.min(rate / SCALE, 1) * 100;
+    const colour    = rate < 0.15 ? '#DC2626' : rate < 0.25 ? '#D97706' : '#16A34A';
+    const label     = (TYPE_LABEL[r.campaign_type] || r.campaign_type) + ' · ' + r.region;
+    const pct       = fmtPct(rate);
+    const clickable = rate < 0.25;
+    const onclick   = clickable
+      ? `onclick="drillToOpts('${r.campaign_type}','${r.region}')" title="Click to view optimizations"`
+      : '';
+    return `<div class="mql-chart-row${clickable ? ' clickable' : ''}" ${onclick}>
+      <div class="mql-chart-label">${label}</div>
+      <div class="mql-chart-bar-wrap">
+        <div class="mql-chart-bar" style="width:${barW.toFixed(1)}%;background:${colour}"></div>
+        <div class="mql-chart-goalline" title="25% goal"></div>
+      </div>
+      <div class="mql-chart-val" style="color:${colour}">${pct}</div>
+    </div>`;
+  }).join('');
+
+  wrap.innerHTML = rowsHtml +
+    `<div class="mql-chart-legend">
+      <span class="mql-chart-legend-line"></span> 25% goal line
+    </div>`;
+}
+
 // ── Main render ───────────────────────────────────────────────────────────────
 let lastRange = { fromYM: 0, toYM: 0 };
 
@@ -801,6 +926,7 @@ function render(fromYM, toYM) {
   renderCompareCard('card-search', 'Paid Search', 'Google &amp; Bing SEM campaigns',             search);
   renderCompareCard('card-other',  'Paid Other',  'Facebook, Display &amp; Demand Gen campaigns', pother);
   renderCompareChart(search, pother);
+  renderMqlSqlChart(fc);
 }
 
 // ── Wiring ────────────────────────────────────────────────────────────────────
