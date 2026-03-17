@@ -1038,7 +1038,7 @@ function renderWeeklySummaryTab() {
     return MONTH_NAMES[m - 1];
   }
 
-  // ── Section 1: Month-over-Month KPIs ──────────────────────────────────────
+  // ── Section 1: Month-over-Month KPIs (with mid-month projection) ───────────
   const allRows = D.campaigns || [];
   const months = [...new Set(allRows.map(r => `${r.year}-${String(r.month).padStart(2,'0')}`))]
     .sort().reverse();
@@ -1053,8 +1053,24 @@ function renderWeeklySummaryTab() {
       .reduce((a, r) => ({ cost: a.cost+r.cost, mql: a.mql+r.mql, sql: a.sql+r.sql }), {cost:0,mql:0,sql:0});
   }
 
-  const cur  = sumMonth(thisMo);
-  const prev = sumMonth(lastMo);
+  const curActual = sumMonth(thisMo);
+  const prev      = sumMonth(lastMo);
+
+  // Detect if thisMo is the current calendar month → project to full month
+  const today = new Date();
+  const todayYM = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+  const isMidMonth = thisMo === todayYM;
+  const daysElapsed  = isMidMonth ? today.getDate() : null;
+  const daysInMonth  = isMidMonth ? new Date(today.getFullYear(), today.getMonth()+1, 0).getDate() : null;
+  const projFactor   = isMidMonth && daysElapsed > 0 ? daysInMonth / daysElapsed : 1;
+  const isProjecting = isMidMonth && daysElapsed < daysInMonth;
+
+  // Project spend/mql/sql; keep ratios as actuals (they don't scale linearly)
+  const cur = isProjecting ? {
+    cost: curActual.cost * projFactor,
+    mql:  curActual.mql  * projFactor,
+    sql:  curActual.sql  * projFactor,
+  } : curActual;
 
   function deltaHtml(curVal, prevVal, lowerIsBetter) {
     if (!prevVal) return '<span class="delta-flat">—</span>';
@@ -1067,30 +1083,40 @@ function renderWeeklySummaryTab() {
     return `<span class="${cls}">${up ? '↑' : '↓'} ${pct}%</span>`;
   }
 
-  const curRate   = cur.mql  > 0 ? cur.sql  / cur.mql  : 0;
+  // Ratios use actuals (not projected)
+  const curRate   = curActual.mql  > 0 ? curActual.sql  / curActual.mql  : 0;
   const prevRate  = prev.mql > 0 ? prev.sql / prev.mql : 0;
-  const curCpMql  = cur.mql  > 0 ? cur.cost / cur.mql  : 0;
-  const prevCpMql = prev.mql > 0 ? prev.cost/ prev.mql : 0;
+  const curCpMql  = curActual.mql  > 0 ? curActual.cost / curActual.mql  : 0;
+  const prevCpMql = prev.mql > 0 ? prev.cost / prev.mql : 0;
+
+  const projLabel = isProjecting
+    ? `~${moLabel(thisMo)} (proj. ${daysElapsed}/${daysInMonth} days)`
+    : moLabel(thisMo);
 
   const kpiCards = [
-    { label:'Spend',    val:fmt$(cur.cost),      delta:deltaHtml(cur.cost,  prev.cost,  true)  },
-    { label:'MQL',      val:fmtN(cur.mql),       delta:deltaHtml(cur.mql,   prev.mql,   false) },
-    { label:'SQL',      val:fmtN(cur.sql),       delta:deltaHtml(cur.sql,   prev.sql,   false) },
-    { label:'MQL→SQL', val:fmtPct(curRate),     delta:deltaHtml(curRate,   prevRate,   false) },
-    { label:'Cost/MQL', val:fmt$(curCpMql||0),   delta:deltaHtml(curCpMql,  prevCpMql,  true)  },
+    { label:'Spend',    val:(isProjecting?'~':'')+fmt$(cur.cost),  delta:deltaHtml(cur.cost,  prev.cost,  true),  projected:isProjecting },
+    { label:'MQL',      val:(isProjecting?'~':'')+fmtN(cur.mql),   delta:deltaHtml(cur.mql,   prev.mql,   false), projected:isProjecting },
+    { label:'SQL',      val:(isProjecting?'~':'')+fmtN(cur.sql),   delta:deltaHtml(cur.sql,   prev.sql,   false), projected:isProjecting },
+    { label:'MQL→SQL', val:fmtPct(curRate),                       delta:deltaHtml(curRate,   prevRate,   false), projected:false },
+    { label:'Cost/MQL', val:fmt$(curCpMql||0),                     delta:deltaHtml(curCpMql,  prevCpMql,  true),  projected:false },
   ];
+
+  const projNote = isProjecting
+    ? `<div style="font-size:11px;color:#94A3B8;margin-top:10px">~ Projected based on ${daysElapsed} of ${daysInMonth} days elapsed. MQL→SQL and Cost/MQL show actuals.</div>`
+    : '';
 
   const kpiHtml = `
     <div class="summary-section">
-      <div class="summary-section-title">📊 ${moLabel(thisMo)} vs ${moLabel(lastMo)} — Month-over-Month</div>
+      <div class="summary-section-title">📊 ${projLabel} vs ${moLabel(lastMo)} — Month-over-Month</div>
       <div class="summary-kpi-grid">
         ${kpiCards.map(c => `
-          <div class="summary-kpi-card">
-            <div class="summary-kpi-label">${c.label}</div>
+          <div class="summary-kpi-card" ${c.projected ? 'style="border-color:#BFDBFE"' : ''}>
+            <div class="summary-kpi-label">${c.label}${c.projected ? ' <span style="color:#3B82F6;font-size:9px">PROJECTED</span>' : ''}</div>
             <div class="summary-kpi-val">${c.val}</div>
             <div class="summary-kpi-delta">${c.delta}</div>
           </div>`).join('')}
       </div>
+      ${projNote}
     </div>`;
 
   // ── Section 2: Account changes — last 7 days ──────────────────────────────
