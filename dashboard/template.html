@@ -137,6 +137,28 @@
   .mql-chart-legend-line { width:16px; height:3px; background:#16A34A;
                            border-radius:2px; display:inline-block; }
 
+  /* ── Weekly Summary tab ── */
+  .summary-section { background:#fff; border:1px solid #E2E8F0; border-radius:10px;
+                     padding:20px 24px; margin-bottom:16px; }
+  .summary-section-title { font-size:13px; font-weight:700; color:#1E293B; margin-bottom:14px; }
+  .summary-kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; }
+  .summary-kpi-card { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 14px; }
+  .summary-kpi-label { font-size:11px; font-weight:600; color:#64748B;
+                        text-transform:uppercase; letter-spacing:.4px; }
+  .summary-kpi-val   { font-size:20px; font-weight:700; color:#1E293B; margin:4px 0 2px; }
+  .summary-kpi-delta { font-size:11px; font-weight:600; }
+  .delta-up   { color:#16A34A; }
+  .delta-down { color:#DC2626; }
+  .delta-flat { color:#94A3B8; }
+  .summary-change-row { padding:7px 0; border-bottom:1px solid #F1F5F9; font-size:13px; }
+  .summary-change-row:last-child { border-bottom:none; }
+  .summary-delta-row { display:flex; align-items:center; gap:12px;
+                       padding:7px 0; border-bottom:1px solid #F1F5F9; font-size:13px; }
+  .summary-delta-row:last-child { border-bottom:none; }
+  .summary-issue-row { display:flex; align-items:flex-start; gap:10px;
+                       padding:8px 0; border-bottom:1px solid #F1F5F9; }
+  .summary-issue-row:last-child { border-bottom:none; }
+
   /* ── Account Changes tab ── */
   .changes-week-header {
     font-size:12px; font-weight:700; color:#64748B; text-transform:uppercase;
@@ -313,6 +335,7 @@
     <button class="tab-btn" data-tab="opts">Campaign Optimizations</button>
     <button class="tab-btn" data-tab="agissues">Ad Group Issues</button>
     <button class="tab-btn" data-tab="changes">Account Changes</button>
+    <button class="tab-btn" data-tab="summary">Weekly Summary</button>
   </div>
 
   <!-- Overview tab -->
@@ -487,6 +510,11 @@
       <div id="changes-content"></div>
     </div>
   </div><!-- /tab-changes -->
+
+  <!-- Weekly Summary tab -->
+  <div id="tab-summary" style="display:none">
+    <div id="summary-content" style="padding:4px 0"></div>
+  </div><!-- /tab-summary -->
 
   <div class="footer-note" id="footer-note"></div>
 </div>
@@ -998,6 +1026,206 @@ function setAgFilter(sev) {
   renderAdGroupIssuesTab();
 }
 
+// ── Weekly Summary tab ────────────────────────────────────────────────────────
+function renderWeeklySummaryTab() {
+  const wrap = document.getElementById('summary-content');
+
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function moLabel(ym) {
+    if (!ym) return '—';
+    const [, m] = ym.split('-').map(Number);
+    return MONTH_NAMES[m - 1];
+  }
+
+  // ── Section 1: Month-over-Month KPIs ──────────────────────────────────────
+  const allRows = D.campaigns || [];
+  const months = [...new Set(allRows.map(r => `${r.year}-${String(r.month).padStart(2,'0')}`))]
+    .sort().reverse();
+  const thisMo = months[0];
+  const lastMo = months[1];
+
+  function sumMonth(ym) {
+    if (!ym) return { cost:0, mql:0, sql:0 };
+    const [y, m] = ym.split('-').map(Number);
+    return allRows
+      .filter(r => r.year === y && r.month === m)
+      .reduce((a, r) => ({ cost: a.cost+r.cost, mql: a.mql+r.mql, sql: a.sql+r.sql }), {cost:0,mql:0,sql:0});
+  }
+
+  const cur  = sumMonth(thisMo);
+  const prev = sumMonth(lastMo);
+
+  function deltaHtml(curVal, prevVal, lowerIsBetter) {
+    if (!prevVal) return '<span class="delta-flat">—</span>';
+    const diff = curVal - prevVal;
+    if (Math.abs(diff / Math.abs(prevVal)) < 0.005) return '<span class="delta-flat">→ flat</span>';
+    const pct = Math.abs((diff / Math.abs(prevVal)) * 100).toFixed(0);
+    const up = diff > 0;
+    const good = lowerIsBetter ? !up : up;
+    const cls = good ? 'delta-up' : 'delta-down';
+    return `<span class="${cls}">${up ? '↑' : '↓'} ${pct}%</span>`;
+  }
+
+  const curRate   = cur.mql  > 0 ? cur.sql  / cur.mql  : 0;
+  const prevRate  = prev.mql > 0 ? prev.sql / prev.mql : 0;
+  const curCpMql  = cur.mql  > 0 ? cur.cost / cur.mql  : 0;
+  const prevCpMql = prev.mql > 0 ? prev.cost/ prev.mql : 0;
+
+  const kpiCards = [
+    { label:'Spend',    val:fmt$(cur.cost),      delta:deltaHtml(cur.cost,  prev.cost,  true)  },
+    { label:'MQL',      val:fmtN(cur.mql),       delta:deltaHtml(cur.mql,   prev.mql,   false) },
+    { label:'SQL',      val:fmtN(cur.sql),       delta:deltaHtml(cur.sql,   prev.sql,   false) },
+    { label:'MQL→SQL', val:fmtPct(curRate),     delta:deltaHtml(curRate,   prevRate,   false) },
+    { label:'Cost/MQL', val:fmt$(curCpMql||0),   delta:deltaHtml(curCpMql,  prevCpMql,  true)  },
+  ];
+
+  const kpiHtml = `
+    <div class="summary-section">
+      <div class="summary-section-title">📊 ${moLabel(thisMo)} vs ${moLabel(lastMo)} — Month-over-Month</div>
+      <div class="summary-kpi-grid">
+        ${kpiCards.map(c => `
+          <div class="summary-kpi-card">
+            <div class="summary-kpi-label">${c.label}</div>
+            <div class="summary-kpi-val">${c.val}</div>
+            <div class="summary-kpi-delta">${c.delta}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  // ── Section 2: Account changes — last 7 days ──────────────────────────────
+  const events  = D.change_events || [];
+  const cutoff  = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recent  = events.filter(ev => new Date(ev.change_datetime.replace(' ','T')).getTime() >= cutoff);
+
+  const OP_LABEL  = { CREATE:'New', UPDATE:'Updated', REMOVE:'Removed' };
+  const RES_LABEL = {
+    CAMPAIGN:'Campaign', AD_GROUP:'Ad Group', AD:'Ad',
+    AD_GROUP_CRITERION:'Keyword', CAMPAIGN_BUDGET:'Budget',
+    CAMPAIGN_CRITERION:'Neg. Keyword',
+  };
+
+  let changesBody;
+  if (!recent.length) {
+    changesBody = '<p style="color:#94A3B8;font-size:13px;margin:0">No changes in the last 7 days. Run the sync script to refresh.</p>';
+  } else {
+    const byOp = {};
+    for (const ev of recent) {
+      if (!byOp[ev.operation]) byOp[ev.operation] = [];
+      byOp[ev.operation].push(ev);
+    }
+    changesBody = Object.entries(byOp).map(([op, evs]) => {
+      const rows = evs.slice(0, 5).map(ev => {
+        const res = RES_LABEL[ev.resource_type] || ev.resource_type;
+        const who = ev.user_email === 'Automated' ? '' : ` <span style="color:#94A3B8;font-size:11px">· ${ev.user_email}</span>`;
+        return `<div class="summary-change-row">
+          <span class="op-badge op-${op.toLowerCase()}">${OP_LABEL[op]||op}</span>
+          <span style="margin-left:8px">${res}: <strong>${ev.campaign_name||'—'}</strong></span>${who}
+        </div>`;
+      }).join('');
+      const more = evs.length > 5
+        ? `<div style="font-size:11px;color:#94A3B8;padding:4px 0">+ ${evs.length-5} more — see Account Changes tab</div>`
+        : '';
+      return rows + more;
+    }).join('');
+  }
+
+  const changesHtml = `
+    <div class="summary-section">
+      <div class="summary-section-title">🔧 Account Changes — Last 7 Days (${recent.length} change${recent.length!==1?'s':''})</div>
+      ${changesBody}
+    </div>`;
+
+  // ── Section 3: What moved >10% MoM ────────────────────────────────────────
+  function monthMap(ym) {
+    if (!ym) return {};
+    const [y, m] = ym.split('-').map(Number);
+    const map = {};
+    for (const r of allRows) {
+      if (r.year !== y || r.month !== m || (r.mql === 0 && r.sql === 0)) continue;
+      const k = r.campaign_type + ' · ' + r.region;
+      if (!map[k]) map[k] = { mql:0, sql:0 };
+      map[k].mql += r.mql;
+      map[k].sql += r.sql;
+    }
+    return map;
+  }
+
+  const curMap  = monthMap(thisMo);
+  const prevMap = monthMap(lastMo);
+  const movers  = [];
+  for (const [key, c] of Object.entries(curMap)) {
+    const p = prevMap[key];
+    if (!p) continue;
+    for (const metric of ['mql','sql']) {
+      if (p[metric] > 0) {
+        const delta = (c[metric] - p[metric]) / p[metric];
+        if (Math.abs(delta) >= 0.10) {
+          movers.push({ key, metric: metric.toUpperCase(), delta, up: delta>0, cur: c[metric], prev: p[metric] });
+        }
+      }
+    }
+  }
+  movers.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  let moversBody;
+  if (!movers.length) {
+    moversBody = '<p style="color:#94A3B8;font-size:13px;margin:0">No significant moves (&gt;10%) vs last month.</p>';
+  } else {
+    moversBody = movers.slice(0, 8).map(mv => {
+      const pct = Math.abs(mv.delta * 100).toFixed(0);
+      const cls = mv.up ? 'delta-up' : 'delta-down';
+      return `<div class="summary-delta-row">
+        <span style="min-width:190px;color:#1E293B">${mv.key}</span>
+        <span style="color:#64748B;font-size:12px;min-width:36px">${mv.metric}</span>
+        <span class="summary-kpi-delta ${cls}" style="min-width:52px">${mv.up?'↑':'↓'} ${pct}%</span>
+        <span style="color:#94A3B8;font-size:12px">${fmtN(mv.prev)} → ${fmtN(mv.cur)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const moversHtml = `
+    <div class="summary-section">
+      <div class="summary-section-title">📈 What Moved — ${moLabel(lastMo)} → ${moLabel(thisMo)} (&gt;10% swing)</div>
+      ${moversBody}
+    </div>`;
+
+  // ── Section 4: Top issues to action ───────────────────────────────────────
+  const SEV_ICONS = { high:'🔴', medium:'🟡', low:'🔵', ok:'🟢' };
+  const topOpts = (D.optimizations || [])
+    .filter(o => o.severity === 'high' || o.severity === 'medium')
+    .sort((a, b) => (b.metrics?.cost||0) - (a.metrics?.cost||0))
+    .slice(0, 3);
+
+  let issuesBody;
+  if (!topOpts.length) {
+    issuesBody = '<p style="color:#16A34A;font-size:13px;margin:0">✅ No high or medium priority issues for the current period.</p>';
+  } else {
+    issuesBody = topOpts.map(o => {
+      const topIssue = (o.issues||[])[0] || 'Review campaign performance';
+      return `<div class="summary-issue-row">
+        <span style="font-size:16px;flex-shrink:0;margin-top:1px">${SEV_ICONS[o.severity]||'⚪'}</span>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#1E293B;margin-bottom:2px">${o.display_name}</div>
+          <div style="font-size:12px;color:#475569">${topIssue}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const issuesHtml = `
+    <div class="summary-section">
+      <div class="summary-section-title">🎯 Top Issues to Action This Week</div>
+      ${issuesBody}
+      ${topOpts.length ? `<div style="margin-top:12px">
+        <button class="tab-btn" style="font-size:12px;padding:5px 14px"
+          onclick="document.querySelector('[data-tab=opts]').click()">
+          View all Campaign Optimizations →
+        </button></div>` : ''}
+    </div>`;
+
+  wrap.innerHTML = kpiHtml + changesHtml + moversHtml + issuesHtml;
+}
+
 // ── Account Changes tab ───────────────────────────────────────────────────────
 function renderChangesTab() {
   const wrap = document.getElementById('changes-content');
@@ -1340,7 +1568,7 @@ function drillToOpts(campaignType, region) {
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === 'opts')
   );
-  ['tab-overview','tab-adgroups','tab-opts','tab-agissues','tab-changes'].forEach(id => {
+  ['tab-overview','tab-adgroups','tab-opts','tab-agissues','tab-changes','tab-summary'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = id === 'tab-opts' ? '' : 'none';
   });
@@ -1491,10 +1719,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-opts').style.display      = tab === 'opts'      ? '' : 'none';
     document.getElementById('tab-agissues').style.display  = tab === 'agissues'  ? '' : 'none';
     document.getElementById('tab-changes').style.display   = tab === 'changes'   ? '' : 'none';
+    document.getElementById('tab-summary').style.display   = tab === 'summary'   ? '' : 'none';
     if (tab === 'adgroups') renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
     if (tab === 'opts')     renderOptimizationsTab();
     if (tab === 'agissues') renderAdGroupIssuesTab();
     if (tab === 'changes')  renderChangesTab();
+    if (tab === 'summary')  renderWeeklySummaryTab();
   });
 });
 
