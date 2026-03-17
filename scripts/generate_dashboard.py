@@ -385,13 +385,14 @@ def load_change_events(service) -> list[dict]:
 def load_is_weekly(service) -> list[dict]:
     """
     ImpShareWeekly tab (written by sync_gads_to_sheet.py).
-    Columns: Week | Impressions | SearchIS | LostIS_Rank
+    Columns: Week | Campaign | Impressions | SearchIS | LostIS_Rank
+    Returns one row per (campaign, week). JS computes the "All" aggregate on the fly.
     Returns empty list if tab doesn't exist yet.
     """
     try:
         rows = read_tab(service, "ImpShareWeekly")
     except Exception:
-        return []  # tab not yet populated — chart will show empty state
+        return []
     result = []
     for row in rows[1:]:  # skip header
         if len(row) < 1:
@@ -399,11 +400,23 @@ def load_is_weekly(service) -> list[dict]:
         week = str(row[0]).strip()
         if not week:
             continue
+        # Support both old 4-col format (no campaign) and new 5-col format
+        if len(row) >= 5:
+            campaign    = str(row[1]).strip()
+            impressions = safe_int(row[2])
+            search_is   = safe_float(row[3]) if row[3] != "" else None
+            lost_is     = safe_float(row[4]) if row[4] != "" else None
+        else:
+            campaign    = "All"
+            impressions = safe_int(row[1]) if len(row) > 1 else 0
+            search_is   = safe_float(row[2]) if len(row) > 2 and row[2] != "" else None
+            lost_is     = safe_float(row[3]) if len(row) > 3 and row[3] != "" else None
         result.append({
             "week":         week,
-            "impressions":  safe_int(row[1]) if len(row) > 1 else 0,
-            "search_is":    safe_float(row[2]) if len(row) > 2 and row[2] != "" else None,
-            "lost_is_rank": safe_float(row[3]) if len(row) > 3 and row[3] != "" else None,
+            "campaign":     campaign,
+            "impressions":  impressions,
+            "search_is":    search_is,
+            "lost_is_rank": lost_is,
         })
     return result
 

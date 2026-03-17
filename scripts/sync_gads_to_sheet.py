@@ -188,13 +188,13 @@ def fetch_adgroup_monthly(client: GoogleAdsClient, months: int) -> list[dict]:
 
 def fetch_impression_share_weekly(client: GoogleAdsClient, weeks: int = 16) -> list[dict]:
     """
-    Fetch Search Impression Share and Lost IS (Rank) for enabled Paid Search campaigns,
-    aggregated by ISO week using impression-weighted averaging.
+    Fetch Search Impression Share and Lost IS (Rank) per campaign per ISO week.
+    Returns one row per (campaign, week) so the dashboard can filter by campaign.
+    The dashboard JS computes the impression-weighted "All campaigns" aggregate on the fly.
 
     Returns:
-        List of dicts: week (YYYY-MM-DD Monday), impressions, search_is, lost_is_rank
+        List of dicts: week (YYYY-MM-DD Monday), campaign, impressions, search_is, lost_is_rank
     """
-    # Start from the Monday of the week `weeks` ago
     today = date.today()
     start = today - timedelta(weeks=weeks)
     start = start - timedelta(days=start.weekday())  # snap back to Monday
@@ -204,6 +204,7 @@ def fetch_impression_share_weekly(client: GoogleAdsClient, weeks: int = 16) -> l
 
     query = f"""
         SELECT
+            campaign.name,
             segments.date,
             metrics.impressions,
             metrics.search_impression_share,
@@ -212,14 +213,15 @@ def fetch_impression_share_weekly(client: GoogleAdsClient, weeks: int = 16) -> l
         WHERE segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'
             AND campaign.status = 'ENABLED'
             AND campaign.advertising_channel_type = 'SEARCH'
-        ORDER BY segments.date
+        ORDER BY campaign.name, segments.date
     """
 
     response = ga_service.search(customer_id=GLOFOX_CUSTOMER_ID, query=query)
 
-    # Impression-weighted aggregation per ISO week (Monday as key)
-    weekly: dict[date, dict] = {}
+    # Aggregate per (campaign_name, iso_week_monday)
+    weekly: dict[tuple, dict] = {}
     for row in response:
+        campaign_name = str(row.campaign.name)
         d = date.fromisoformat(row.segments.date)
         week_start = d - timedelta(days=d.weekday())  # Monday
         imp = row.metrics.impressions
@@ -234,23 +236,22 @@ def fetch_impression_share_weekly(client: GoogleAdsClient, weeks: int = 16) -> l
         except (TypeError, ValueError):
             rank_lost = 0.0
 
-        if week_start not in weekly:
-            weekly[week_start] = {"impressions": 0, "is_w": 0.0, "rank_w": 0.0}
-        weekly[week_start]["impressions"] += imp
-        weekly[week_start]["is_w"] += is_pct * imp
-        weekly[week_start]["rank_w"] += rank_lost * imp
+        key = (campaign_name, week_start)
+        if key not in weekly:
+            weekly[key] = {"campaign": campaign_name, "impressions": 0, "is_w": 0.0, "rank_w": 0.0}
+        weekly[key]["impressions"] += imp
+        weekly[key]["is_w"]        += is_pct * imp
+        weekly[key]["rank_w"]      += rank_lost * imp
 
     rows = []
-    for ws in sorted(weekly.keys()):
-        w = weekly[ws]
+    for (_, ws), w in sorted(weekly.items(), key=lambda x: (x[0][0], x[0][1])):
         imp = w["impressions"]
-        search_is  = round(w["is_w"]   / imp, 4) if imp > 0 else None
-        lost_is    = round(w["rank_w"] / imp, 4) if imp > 0 else None
         rows.append({
-            "week":        ws.isoformat(),
-            "impressions": imp,
-            "search_is":   search_is,
-            "lost_is_rank": lost_is,
+            "week":         ws.isoformat(),
+            "campaign":     w["campaign"],
+            "impressions":  imp,
+            "search_is":    round(w["is_w"]   / imp, 4) if imp > 0 else None,
+            "lost_is_rank": round(w["rank_w"] / imp, 4) if imp > 0 else None,
         })
 
     return rows
@@ -419,13 +420,14 @@ def write_is_to_sheet(service, rows: list[dict]) -> None:
 
     sheets.values().clear(
         spreadsheetId=SHEET_ID,
-        range=f"{IS_TAB}!A:D",
+        range=f"{IS_TAB}!A:E",
     ).execute()
 
-    headers = ["Week", "Impressions", "SearchIS", "LostIS_Rank"]
+    headers = ["Week", "Campaign", "Impressions", "SearchIS", "LostIS_Rank"]
     values = [headers] + [
         [
             r["week"],
+            r["campaign"],
             r["impressions"],
             r["search_is"] if r["search_is"] is not None else "",
             r["lost_is_rank"] if r["lost_is_rank"] is not None else "",

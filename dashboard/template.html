@@ -443,6 +443,7 @@
       <span class="badge">Last 16 weeks</span>
     </div>
     <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
+      <div id="is-filter-bar" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
       <canvas id="chart-is-weekly" height="100"></canvas>
       <div id="is-chart-empty" style="display:none; color:#94A3B8; font-size:13px; padding:8px 0;">
         No impression share data yet. Run <code>sync_gads_to_sheet.py</code> to populate.
@@ -1477,28 +1478,64 @@ function renderTrendCharts() {
 // ── IS Weekly chart ───────────────────────────────────────────────────────────
 let isChart = null;
 
-function renderIsWeeklyChart() {
-  const data = D.is_weekly || [];
+let _isFilter = 'All';  // active campaign filter
+
+function renderIsWeeklyChart(selectedCampaign) {
+  if (selectedCampaign !== undefined) _isFilter = selectedCampaign;
+
+  const allData = D.is_weekly || [];
   const canvas  = document.getElementById('chart-is-weekly');
   const emptyEl = document.getElementById('is-chart-empty');
+  const filterBar = document.getElementById('is-filter-bar');
 
-  if (!data.length) {
-    if (canvas)  canvas.style.display = 'none';
-    if (emptyEl) emptyEl.style.display = '';
+  if (!allData.length) {
+    if (canvas)   canvas.style.display = 'none';
+    if (emptyEl)  emptyEl.style.display = '';
+    if (filterBar) filterBar.style.display = 'none';
     return;
   }
   if (canvas)  canvas.style.display = '';
   if (emptyEl) emptyEl.style.display = 'none';
 
-  // Format week label: "2026-01-06" → "Jan 6"
-  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const labels = data.map(r => {
-    const [y, m, d] = r.week.split('-').map(Number);
-    return MONTHS[m - 1] + ' ' + d;
-  });
+  // Build campaign list (sorted by total impressions desc)
+  const campImp = {};
+  for (const r of allData) {
+    campImp[r.campaign] = (campImp[r.campaign] || 0) + r.impressions;
+  }
+  const campaigns = Object.keys(campImp).sort((a, b) => campImp[b] - campImp[a]);
 
-  const isData   = data.map(r => r.search_is   != null ? +(r.search_is   * 100).toFixed(1) : null);
-  const rankData = data.map(r => r.lost_is_rank != null ? +(r.lost_is_rank * 100).toFixed(1) : null);
+  // Render filter buttons
+  if (filterBar) {
+    const btns = ['All', ...campaigns].map(c => {
+      const active = _isFilter === c ? ' active' : '';
+      return `<button class="opt-filter-btn${active}" style="font-size:11px;padding:3px 10px"
+        onclick="renderIsWeeklyChart('${c.replace(/'/g,"\\'")}')">
+        ${c === 'All' ? 'All campaigns' : c}
+      </button>`;
+    }).join('');
+    filterBar.innerHTML = btns;
+    filterBar.style.display = campaigns.length > 1 ? 'flex' : 'none';
+  }
+
+  // Collect all unique weeks in sorted order
+  const weekSet = [...new Set(allData.map(r => r.week))].sort();
+
+  // Aggregate data for selected campaign (or impression-weighted all)
+  const weekMap = {};
+  for (const r of allData) {
+    if (_isFilter !== 'All' && r.campaign !== _isFilter) continue;
+    if (!weekMap[r.week]) weekMap[r.week] = { imp: 0, is_w: 0, rank_w: 0 };
+    weekMap[r.week].imp    += r.impressions;
+    weekMap[r.week].is_w   += (r.search_is   ?? 0) * r.impressions;
+    weekMap[r.week].rank_w += (r.lost_is_rank ?? 0) * r.impressions;
+  }
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const labels   = weekSet.map(w => { const [,m,d] = w.split('-').map(Number); return MONTHS[m-1]+' '+d; });
+  const isData   = weekSet.map(w => weekMap[w]?.imp > 0 ? +((weekMap[w].is_w   / weekMap[w].imp) * 100).toFixed(1) : null);
+  const rankData = weekSet.map(w => weekMap[w]?.imp > 0 ? +((weekMap[w].rank_w / weekMap[w].imp) * 100).toFixed(1) : null);
+
+  const chartTitle = _isFilter === 'All' ? 'All Paid Search campaigns (impression-weighted)' : _isFilter;
 
   if (isChart) { isChart.destroy(); isChart = null; }
   const ctx = canvas.getContext('2d');
@@ -1512,22 +1549,14 @@ function renderIsWeeklyChart() {
           data: isData,
           borderColor: '#3B82F6',
           backgroundColor: 'rgba(59,130,246,.08)',
-          borderWidth: 2,
-          pointRadius: 3,
-          tension: 0.3,
-          fill: true,
-          spanGaps: true,
+          borderWidth: 2, pointRadius: 3, tension: 0.3, fill: true, spanGaps: true,
         },
         {
           label: 'Lost IS — Rank %',
           data: rankData,
           borderColor: '#DC2626',
           backgroundColor: 'rgba(220,38,38,.05)',
-          borderWidth: 2,
-          pointRadius: 3,
-          tension: 0.3,
-          fill: false,
-          spanGaps: true,
+          borderWidth: 2, pointRadius: 3, tension: 0.3, fill: false, spanGaps: true,
         },
       ],
     },
@@ -1536,11 +1565,8 @@ function renderIsWeeklyChart() {
       maintainAspectRatio: true,
       plugins: {
         legend: { position: 'top', labels: { font: { size: 12 }, padding: 16 } },
-        tooltip: {
-          callbacks: {
-            label: c => ` ${c.dataset.label}: ${c.raw != null ? c.raw + '%' : '—'}`,
-          },
-        },
+        subtitle: { display: true, text: chartTitle, font: { size: 11 }, color: '#94A3B8', padding: { bottom: 8 } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.raw != null ? c.raw + '%' : '—'}` } },
       },
       scales: {
         y: {
@@ -1549,10 +1575,7 @@ function renderIsWeeklyChart() {
           grid: { color: '#F1F5F9' },
           title: { display: true, text: '% of eligible impressions', font: { size: 11 }, color: '#94A3B8' },
         },
-        x: {
-          ticks: { font: { size: 11 }, maxRotation: 45 },
-          grid: { display: false },
-        },
+        x: { ticks: { font: { size: 11 }, maxRotation: 45 }, grid: { display: false } },
       },
     },
   });
