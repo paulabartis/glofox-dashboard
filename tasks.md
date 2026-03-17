@@ -535,6 +535,42 @@ The month-over-month KPI comparison is misleading mid-month (e.g. on March 10th,
 
 ---
 
+### Task: Account Changes — narrative summary (verbal paragraphs, not raw table)
+The current Account Changes tab shows a raw table of every change event. Replace (or augment) this with a human-readable narrative: a few short paragraphs describing what happened in plain English, grouped by theme.
+
+**Why:** A table of 300 rows is noise. A 3-paragraph summary like "This week 4 campaigns were paused, 2 new ad groups were created in Gym Mgmt NAM, and budgets were increased across 3 EMEA campaigns" tells the story at a glance.
+
+**Desired output (example):**
+> **Campaign status changes:** 2 campaigns were paused this week — *Gym Management Software WW* and *Modality Software APAC*. No new campaigns were launched.
+>
+> **Budget & bid changes:** Budgets were updated on 5 campaigns, mostly in NAM. *Gym Management Software USA* saw a budget increase.
+>
+> **Ad & keyword changes:** 3 new ads were created in the Branded · NAM ad groups. 7 keywords were added or modified across Search campaigns.
+>
+> **Key actions this week:** Paused 2 underperforming WW campaigns · Increased NAM budgets ahead of Q2 push
+
+**Implementation approach:**
+- Group `D.change_events` (last 7 days) by resource_type + operation into buckets: Campaign Status, Budget/Bids, Ads, Keywords, Other
+- Write a template sentence per bucket: "X campaigns were [paused/enabled/created]", "Budgets updated on X campaigns", etc.
+- Pull campaign names for the most significant changes (status changes + budget changes get named; keyword changes get counts only)
+- Render as a `<div>` with styled paragraphs, not a table
+- Add a "Key actions" line at the bottom: bullet list of 2–4 notable changes
+- Keep the raw table accessible via a "Show full change log →" expand toggle below the narrative
+
+**Sub-tasks:**
+- [ ] Write `buildChangesNarrative(events)` JS function that groups events and generates paragraph strings
+- [ ] Replace default view in Account Changes tab with the narrative div
+- [ ] Add "Show full change log" toggle that reveals the existing table
+- [ ] Also surface the narrative in the Weekly Summary tab "Account Changes" section (currently shows raw rows)
+
+**How to test:**
+- Account Changes tab opens to narrative paragraphs, not the table
+- "Show full change log" expands to show the existing table
+- Narrative correctly counts and names changed campaigns
+- If no changes in last 7 days: shows "No changes recorded this week"
+
+---
+
 ### Task: Campaign Optimization insights — make them more actionable
 Current optimization cards show vague generic advice. Replace with specific, numbered next actions and opportunity sizing.
 
