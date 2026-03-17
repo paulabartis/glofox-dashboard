@@ -502,6 +502,39 @@ A dedicated tab showing last week's (Sun–Sat) account story — what happened,
 
 ---
 
+### Task: Weekly Summary — current month projection ("on track to land X")
+The month-over-month KPI comparison is misleading mid-month (e.g. on March 10th, March looks terrible vs February because it only has 10 days of data). Add a "projected to land" figure for the current month so the comparison is meaningful at any point in the month.
+
+**Why:** Pulling the dashboard on March 17 shows 17/31 days of data for March. A projection extrapolates from pace-to-date to give a full-month estimate, making the MoM delta honest.
+
+**Approach:**
+- Detect current month using `new Date()` — compare `today.getMonth()` + `today.getFullYear()` to the most recent month in `D.campaigns`
+- If today is in the current month: calculate days elapsed (`today.getDate()`) and days in month (`new Date(y, m, 0).getDate()`)
+- Projected value = `actual × (days_in_month / days_elapsed)`
+- Show projected values with a "~" prefix and a "📅 projected" sub-label in the KPI cards
+- Compare projected current month vs actual last month for the delta
+
+**Which metrics to project:**
+- Spend ✅ (linear spend assumption is reasonable)
+- MQL ✅ (linear lead volume assumption reasonable)
+- SQL ✅ (same)
+- MQL→SQL % ❌ (ratio — use actual, not projected; it won't change with more days)
+- Cost/MQL ❌ (ratio — same reasoning)
+
+**Sub-tasks:**
+- [ ] In `renderWeeklySummaryTab()`: detect if `thisMo` is the current calendar month
+- [ ] If yes: compute `daysElapsed` and `daysInMonth`, scale Spend/MQL/SQL by `daysInMonth/daysElapsed`
+- [ ] Update KPI card labels to show "~Mar (projected)" vs "Feb"
+- [ ] Add a small footnote: "Projected based on X/Y days elapsed"
+- [ ] If `thisMo` is a complete past month: show actual vs actual (no projection, no footnote)
+
+**How to test:**
+- Open Weekly Summary mid-month → current month card shows "~" prefix and projected value
+- Open at end of month (or mock `daysElapsed = daysInMonth`) → no projection, shows actual
+- Verify projection math: if March 17 spend = $100K and month has 31 days → projected = $100K × 31/17 = ~$182K
+
+---
+
 ### Task: Campaign Optimization insights — make them more actionable
 Current optimization cards show vague generic advice. Replace with specific, numbered next actions and opportunity sizing.
 
