@@ -819,34 +819,31 @@ function renderOptimizationsTab() {
     <button class="opt-filter-btn${_optFilter==='all'?' active':''}" onclick="setOptFilter('all')">All</button>
     ${sevButtons}`;
 
-  // Group by campaign_type, sort within group by cost desc
-  const TYPE_ORDER_OPT = ['GymManagement','Modality','Branded','Competitor','Demand Gen','Other'];
-  const byType = {};
-  for (const c of opts) {
-    const t = c.campaign_type || 'Other';
-    if (!byType[t]) byType[t] = [];
-    byType[t].push(c);
-  }
-  for (const t of Object.keys(byType)) {
-    byType[t].sort((a, b) => (b.metrics.cost || 0) - (a.metrics.cost || 0));
-  }
+  // Sort by severity first (high→medium→low→ok), then by cost descending within each group
+  const SEV_ORDER = { high: 0, medium: 1, low: 2, ok: 3 };
+  const sorted = [...opts].sort((a, b) => {
+    const sd = (SEV_ORDER[a.severity] ?? 3) - (SEV_ORDER[b.severity] ?? 3);
+    if (sd !== 0) return sd;
+    return (b.metrics.cost || 0) - (a.metrics.cost || 0);
+  });
 
-  // Render all cards (filter visibility applied by applyOptFilter)
+  // Render cards with severity group headings
   let html = '';
-  for (const type of TYPE_ORDER_OPT) {
-    const camps = byType[type];
-    if (!camps || !camps.length) continue;
-    html += `<div class="opt-type-heading" data-type="${type}">${TYPE_LABELS[type] || type}</div>`;
-    for (const c of camps) {
-      const m   = c.metrics;
-      const ctr = m.impressions > 0 ? fmtPct(m.clicks / m.impressions) : '—';
-      const cpc = m.clicks      > 0 ? fmt$(m.cost / m.clicks)           : '—';
-      const mqlSqlPct = m.mql   > 0 ? fmtPct(m.sql / m.mql)            : '—';
-      const issuesHtml = c.issues.length > 0
-        ? `<ul class="opt-issues">${c.issues.map(i => `<li>${i}</li>`).join('')}</ul>`
-        : `<div class="opt-ok">✓ No issues found for this period</div>`;
-      html += `
-<div class="opt-card sev-${c.severity}" data-sev="${c.severity}" data-type="${type}" id="opt-card-${slugify(c.campaign_type)}-${slugify(c.region)}">
+  let lastSev = null;
+  for (const c of sorted) {
+    if (c.severity !== lastSev) {
+      html += `<div class="opt-type-heading" data-sev="${c.severity}">${SEV_ICONS[c.severity]} ${SEV_LABELS[c.severity]}</div>`;
+      lastSev = c.severity;
+    }
+    const m   = c.metrics;
+    const ctr = m.impressions > 0 ? fmtPct(m.clicks / m.impressions) : '—';
+    const cpc = m.clicks      > 0 ? fmt$(m.cost / m.clicks)           : '—';
+    const mqlSqlPct = m.mql   > 0 ? fmtPct(m.sql / m.mql)            : '—';
+    const issuesHtml = c.issues.length > 0
+      ? `<ul class="opt-issues">${c.issues.map(i => `<li>${i}</li>`).join('')}</ul>`
+      : `<div class="opt-ok">✓ No issues found for this period</div>`;
+    html += `
+<div class="opt-card sev-${c.severity}" data-sev="${c.severity}" data-type="${c.campaign_type || 'Other'}" id="opt-card-${slugify(c.campaign_type)}-${slugify(c.region)}">
   <div class="opt-card-name">
     <span class="opt-sev-pill sev-${c.severity}">${SEV_LABELS[c.severity]}</span>
     ${c.display_name}
@@ -866,7 +863,6 @@ function renderOptimizationsTab() {
   </div>
   ${issuesHtml}
 </div>`;
-    }
   }
   grid.innerHTML = html;
   applyOptFilter();
@@ -911,11 +907,11 @@ function applyOptFilter() {
     }
   }
 
-  // Hide type headings that have no visible cards
+  // Hide severity headings that have no visible cards
   for (const heading of headings) {
-    const type = heading.dataset.type;
-    const visibleInType = [...cards].some(c => c.dataset.type === type && c.style.display !== 'none');
-    heading.style.display = visibleInType ? '' : 'none';
+    const sev = heading.dataset.sev;
+    const visibleUnder = [...cards].some(c => c.dataset.sev === sev && c.style.display !== 'none');
+    heading.style.display = visibleUnder ? '' : 'none';
   }
 
   // Insert OK toggle at bottom
