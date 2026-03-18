@@ -419,7 +419,7 @@
   <div class="section">
     <div class="section-title">
       Monthly Spend Trend
-      <span class="badge">By campaign type · all time</span>
+      <span class="badge">By campaign type</span>
     </div>
     <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
       <canvas id="chart-spend-trend" height="110"></canvas>
@@ -433,6 +433,17 @@
     </div>
     <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
       <canvas id="chart-mql-trend" height="110"></canvas>
+    </div>
+  </div>
+
+  <!-- Cost/MQL Trend -->
+  <div class="section">
+    <div class="section-title">
+      Monthly Cost per MQL
+      <span class="badge">Spend efficiency trend</span>
+    </div>
+    <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
+      <canvas id="chart-costmql-trend" height="110"></canvas>
     </div>
   </div>
 
@@ -1439,19 +1450,25 @@ const TYPE_DISPLAY = {
   Competitor: 'Competitor', 'Demand Gen': 'Demand Gen', Other: 'Other',
 };
 
-let spendTrendChart = null;
-let mqlTrendChart   = null;
+let spendTrendChart   = null;
+let mqlTrendChart     = null;
+let costMqlTrendChart = null;
 
-function renderTrendCharts() {
-  // Use ALL campaign rows regardless of period filter — trend = all-time view
+function renderTrendCharts(fromYM, toYM) {
   const rows = D.campaigns || [];
 
-  // Build sorted month labels (YYYY-MM) across all data
+  // Build full sorted month list, then filter to selected period
   const monthSet = new Set();
   for (const r of rows) {
     if (r.year && r.month) monthSet.add(`${r.year}-${String(r.month).padStart(2,'0')}`);
   }
-  const months = [...monthSet].sort();
+  const allMonths = [...monthSet].sort();
+  if (!allMonths.length) return;
+
+  const toInt = m => parseInt(m.replace('-', ''));
+  const months = (fromYM && toYM)
+    ? allMonths.filter(m => toInt(m) >= fromYM && toInt(m) <= toYM)
+    : allMonths;
   if (!months.length) return;
 
   const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1461,8 +1478,7 @@ function renderTrendCharts() {
   });
 
   // ── 1. Spend trend — stacked bar by campaign type ──────────────────────────
-  // Only GadsData rows have real cost (_is_gads_agg implied by cost>0 and mql===0,sql===0)
-  const spendByType = {}; // campaign_type → { monthKey → cost }
+  const spendByType = {};
   const typeOrder = [];
   for (const r of rows) {
     if (!r.cost || r.cost === 0) continue;
@@ -1471,9 +1487,7 @@ function renderTrendCharts() {
     if (!spendByType[ct]) { spendByType[ct] = {}; typeOrder.push(ct); }
     spendByType[ct][mk] = (spendByType[ct][mk] || 0) + r.cost;
   }
-  // Deduplicate typeOrder
   const spendTypes = [...new Set(typeOrder)];
-
   const spendDatasets = spendTypes.map(ct => ({
     label: TYPE_DISPLAY[ct] || ct,
     data:  months.map(m => Math.round((spendByType[ct][m] || 0))),
@@ -1493,11 +1507,7 @@ function renderTrendCharts() {
         maintainAspectRatio: true,
         plugins: {
           legend: { position: 'top', labels: { font: { size: 11 }, padding: 12, boxWidth: 12 } },
-          tooltip: {
-            callbacks: {
-              label: c => ` ${c.dataset.label}: $${c.raw.toLocaleString()}`,
-            },
-          },
+          tooltip: { callbacks: { label: c => ` ${c.dataset.label}: $${c.raw.toLocaleString()}` } },
         },
         scales: {
           x: { stacked: true, ticks: { font: { size: 11 } }, grid: { display: false } },
@@ -1512,9 +1522,8 @@ function renderTrendCharts() {
   }
 
   // ── 2. MQL & SQL trend — dual line ────────────────────────────────────────
-  // Only CampaignsData rows have real MQL/SQL (cost=0 rows)
-  const mqlByMonth = {}; // monthKey → mql
-  const sqlByMonth = {}; // monthKey → sql
+  const mqlByMonth = {};
+  const sqlByMonth = {};
   for (const r of rows) {
     if (r.mql === 0 && r.sql === 0) continue;
     const mk = `${r.year}-${String(r.month).padStart(2,'0')}`;
@@ -1535,20 +1544,14 @@ function renderTrendCharts() {
             data: months.map(m => mqlByMonth[m] || 0),
             borderColor: '#3B82F6',
             backgroundColor: 'rgba(59,130,246,.08)',
-            borderWidth: 2,
-            pointRadius: 3,
-            tension: 0.3,
-            fill: true,
+            borderWidth: 2, pointRadius: 3, tension: 0.3, fill: true,
           },
           {
             label: 'SQL',
             data: months.map(m => sqlByMonth[m] || 0),
             borderColor: '#10B981',
             backgroundColor: 'rgba(16,185,129,.08)',
-            borderWidth: 2,
-            pointRadius: 3,
-            tension: 0.3,
-            fill: true,
+            borderWidth: 2, pointRadius: 3, tension: 0.3, fill: true,
           },
         ],
       },
@@ -1562,6 +1565,54 @@ function renderTrendCharts() {
         scales: {
           x: { ticks: { font: { size: 11 } }, grid: { display: false } },
           y: { ticks: { font: { size: 11 } }, grid: { color: '#F1F5F9' }, min: 0 },
+        },
+      },
+    });
+  }
+
+  // ── 3. Cost/MQL trend — line ───────────────────────────────────────────────
+  const costByMonth = {};
+  const mqlForCp    = {};
+  for (const r of rows) {
+    if (!r.year || !r.month) continue;
+    const mk = `${r.year}-${String(r.month).padStart(2,'0')}`;
+    if (r.cost > 0) costByMonth[mk] = (costByMonth[mk] || 0) + r.cost;
+    if (r.mql  > 0) mqlForCp[mk]    = (mqlForCp[mk]    || 0) + r.mql;
+  }
+  const cpMqlData = months.map(m => {
+    const cost = costByMonth[m] || 0;
+    const mql  = mqlForCp[m]   || 0;
+    return mql > 0 ? Math.round(cost / mql) : null;
+  });
+
+  if (costMqlTrendChart) { costMqlTrendChart.destroy(); costMqlTrendChart = null; }
+  const cpMqlCtx = document.getElementById('chart-costmql-trend');
+  if (cpMqlCtx) {
+    costMqlTrendChart = new Chart(cpMqlCtx.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: monthLabels,
+        datasets: [{
+          label: 'Cost per MQL',
+          data: cpMqlData,
+          borderColor: '#8B5CF6',
+          backgroundColor: 'rgba(139,92,246,.08)',
+          borderWidth: 2, pointRadius: 3, tension: 0.3, fill: true, spanGaps: true,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 }, padding: 12 } },
+          tooltip: { callbacks: { label: c => ` Cost/MQL: ${c.raw != null ? '$' + c.raw.toLocaleString() : '—'}` } },
+        },
+        scales: {
+          x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+          y: {
+            ticks: { font: { size: 11 }, callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v) },
+            grid: { color: '#F1F5F9' }, min: 0,
+          },
         },
       },
     });
@@ -1788,7 +1839,7 @@ function render(fromYM, toYM) {
   renderCompareCard('card-other',  'Paid Other',  'Facebook, Display &amp; Demand Gen campaigns', pother);
   renderCompareChart(search, pother);
   renderMqlSqlChart(fc);
-  renderTrendCharts();
+  renderTrendCharts(fromYM, toYM);
   renderIsWeeklyChart();
 }
 
