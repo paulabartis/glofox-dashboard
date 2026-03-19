@@ -40,6 +40,7 @@ SHEET_ID = "1-M1R5RfWkQiQKvVnclI4d0KpSC1Ww042iCUv6IFe6mc"
 GADS_TAB = "GadsData"
 ADGROUP_TAB = "AdGroupData"
 IS_TAB = "ImpShareWeekly"
+SEARCH_TERMS_TAB = "SearchTermsData"
 GLOFOX_CUSTOMER_ID = "6129012053"
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -181,6 +182,57 @@ def fetch_adgroup_monthly(client: GoogleAdsClient, months: int) -> list[dict]:
             "impressions": row.metrics.impressions,
             "clicks": row.metrics.clicks,
             "cost": round(micros_to_currency(row.metrics.cost_micros), 2),
+        })
+
+    return rows
+
+
+def fetch_search_terms(client: GoogleAdsClient, months: int) -> list[dict]:
+    """
+    Fetch search term view data segmented by calendar month for SEARCH campaigns.
+
+    Returns:
+        List of dicts: search_term, campaign_name, adgroup_name, year, month,
+                       impressions, clicks, cost, conversions
+    """
+    start = months_ago_start(months)
+    end = date.today()
+
+    ga_service = client.get_service("GoogleAdsService")
+
+    query = f"""
+        SELECT
+            search_term_view.search_term,
+            campaign.name,
+            ad_group.name,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros,
+            metrics.conversions,
+            segments.year,
+            segments.month
+        FROM search_term_view
+        WHERE segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'
+            AND campaign.status != 'REMOVED'
+            AND campaign.advertising_channel_type = 'SEARCH'
+        ORDER BY metrics.cost_micros DESC
+        LIMIT 5000
+    """
+
+    response = ga_service.search(customer_id=GLOFOX_CUSTOMER_ID, query=query)
+
+    rows = []
+    for row in response:
+        rows.append({
+            "search_term":   row.search_term_view.search_term,
+            "campaign_name": row.campaign.name,
+            "adgroup_name":  row.ad_group.name,
+            "year":          row.segments.year,
+            "month":         row.segments.month,
+            "impressions":   row.metrics.impressions,
+            "clicks":        row.metrics.clicks,
+            "cost":          round(micros_to_currency(row.metrics.cost_micros), 2),
+            "conversions":   round(row.metrics.conversions, 1),
         })
 
     return rows
@@ -342,6 +394,44 @@ def write_adgroup_to_sheet(service, rows: list[dict]) -> None:
     print(f"  Written {len(rows)} data rows to '{ADGROUP_TAB}' tab.")
 
 
+def write_search_terms_to_sheet(service, rows: list[dict]) -> None:
+    """Clear SearchTermsData tab and write fresh search term data with headers."""
+    sheets = service.spreadsheets()
+
+    ensure_tab_exists(service, SEARCH_TERMS_TAB)
+
+    sheets.values().clear(
+        spreadsheetId=SHEET_ID,
+        range=f"{SEARCH_TERMS_TAB}!A:I",
+    ).execute()
+
+    headers = ["Search Term", "Campaign", "Ad Group", "Year", "Month",
+               "Impressions", "Clicks", "Cost", "Conversions"]
+    values = [headers] + [
+        [
+            r["search_term"],
+            r["campaign_name"],
+            r["adgroup_name"],
+            r["year"],
+            r["month"],
+            r["impressions"],
+            r["clicks"],
+            r["cost"],
+            r["conversions"],
+        ]
+        for r in rows
+    ]
+
+    sheets.values().update(
+        spreadsheetId=SHEET_ID,
+        range=f"{SEARCH_TERMS_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": values},
+    ).execute()
+
+    print(f"  Written {len(rows)} rows to '{SEARCH_TERMS_TAB}' tab.")
+
+
 def fetch_change_events(client: GoogleAdsClient, days: int = 14) -> list[dict]:
     """
     Fetch account change events from the last 14 days.
@@ -492,7 +582,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"[1/5] Connecting to Google Ads API...")
+    print(f"[1/6] Connecting to Google Ads API...")
     try:
         gads_client = get_gads_client()
     except KeyError as e:
@@ -501,19 +591,21 @@ def main():
               "GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_CUSTOMER_ID")
         raise
 
-    print(f"[2/5] Fetching last {args.months} months of campaign data from Google Ads...")
+    print(f"[2/6] Fetching last {args.months} months of campaign data from Google Ads...")
     rows = fetch_gads_monthly(gads_client, args.months)
     print(f"  Retrieved {len(rows)} campaign-month rows.")
 
-    print(f"[3/5] Fetching last {args.months} months of ad group data from Google Ads...")
+    print(f"[3/6] Fetching last {args.months} months of ad group data from Google Ads...")
     ag_rows = fetch_adgroup_monthly(gads_client, args.months)
     print(f"  Retrieved {len(ag_rows)} ad group-month rows.")
 
-    print(f"[4/6] Fetching last 16 weeks of Impression Share data from Google Ads...")
+    print(f"[4/6] Fetching last {args.months} months of search terms from Google Ads...")
+    st_rows = fetch_search_terms(gads_client, args.months)
+    print(f"  Retrieved {len(st_rows)} search term-month rows.")
+
+    print(f"[5/6] Fetching last 16 weeks of Impression Share + last 14 days of change events...")
     is_rows = fetch_impression_share_weekly(gads_client, weeks=16)
     print(f"  Retrieved {len(is_rows)} weekly IS rows.")
-
-    print(f"[5/6] Fetching last 14 days of account change events from Google Ads...")
     change_rows = fetch_change_events(gads_client, days=14)
     print(f"  Retrieved {len(change_rows)} change events.")
 
@@ -521,10 +613,11 @@ def main():
     sheets_service = get_sheets_service()
     write_to_sheet(sheets_service, rows)
     write_adgroup_to_sheet(sheets_service, ag_rows)
+    write_search_terms_to_sheet(sheets_service, st_rows)
     write_is_to_sheet(sheets_service, is_rows)
     write_change_events_to_sheet(sheets_service, change_rows)
 
-    print("\nDone! GadsData, AdGroupData, ImpShareWeekly, and ChangeEvents tabs are up to date.")
+    print("\nDone! GadsData, AdGroupData, SearchTermsData, ImpShareWeekly, and ChangeEvents tabs are up to date.")
 
 
 if __name__ == "__main__":

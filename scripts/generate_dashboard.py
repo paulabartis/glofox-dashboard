@@ -325,6 +325,44 @@ def load_adgroup_data(service) -> list[dict]:
     return result
 
 
+def load_search_terms(service) -> list[dict]:
+    """
+    SearchTermsData tab (written by sync_gads_to_sheet.py).
+    Columns: Search Term | Campaign | Ad Group | Year | Month | Impressions | Clicks | Cost | Conversions
+
+    Uses parse_adgroup_campaign_name() since these are Google Ads readable names.
+    Returns empty list if tab doesn't exist yet.
+    """
+    try:
+        rows = read_tab(service, "SearchTermsData")
+    except Exception:
+        return []
+    result = []
+    for row in rows[1:]:  # skip header
+        if len(row) < 8:
+            continue
+        search_term   = str(row[0]).strip()
+        campaign_name = str(row[1]).strip()
+        adgroup_name  = str(row[2]).strip()
+        if not search_term or not campaign_name:
+            continue
+        meta = parse_adgroup_campaign_name(campaign_name)
+        result.append({
+            "search_term":   search_term,
+            "campaign":      campaign_name,
+            "adgroup":       adgroup_name,
+            "year":          safe_int(row[3]),
+            "month":         parse_month_from_date(row[4]),
+            "impressions":   safe_int(row[5]),
+            "clicks":        safe_int(row[6]),
+            "cost":          safe_float(row[7]),
+            "conversions":   safe_float(row[8]) if len(row) > 8 else 0.0,
+            "campaign_type": meta["campaign_type"],
+            "region":        meta["region"],
+        })
+    return result
+
+
 def load_campaigns_data(service) -> list[dict]:
     """
     CampaignsData tab.
@@ -966,12 +1004,14 @@ def main():
     campaigns_data = load_campaigns_data(service)
     monthly_summary = load_monthly_summary(service)
     adgroup_data = load_adgroup_data(service)
+    search_terms = load_search_terms(service)
     is_weekly = load_is_weekly(service)
     change_events = load_change_events(service)
     print(f"  GadsData: {len(gads_data)} rows")
     print(f"  CampaignsData (paid PPC): {len(campaigns_data)} rows")
     print(f"  MonthlySummary: {len(monthly_summary)} periods")
     print(f"  AdGroupData (paid PPC): {len(adgroup_data)} rows")
+    print(f"  SearchTermsData: {len(search_terms)} rows")
     print(f"  ImpShareWeekly: {len(is_weekly)} weeks")
     print(f"  ChangeEvents: {len(change_events)} events")
 
@@ -997,6 +1037,7 @@ def main():
         "campaigns":     campaign_rows,
         "monthly_kpis":  monthly_summary,
         "adgroups":      adgroup_data,
+        "search_terms":  search_terms,
         "optimizations":    optimizations,
         "ag_optimizations": ag_optimizations,
         "is_weekly":        is_weekly,
