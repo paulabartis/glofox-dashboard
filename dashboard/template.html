@@ -349,8 +349,9 @@
   <!-- Date filter -->
   <div class="period-bar">
     <span class="bar-label">Quick:</span>
-    <button class="period-btn" data-period="1">Last 1M</button>
-    <button class="period-btn active" data-period="3">Last 3M</button>
+    <button class="period-btn active" data-period="1">This Month</button>
+    <button class="period-btn" data-period="3">Last 3M</button>
+
     <button class="period-btn" data-period="6">Last 6M</button>
     <button class="period-btn" data-period="ytd">YTD</button>
     <div class="period-divider"></div>
@@ -2209,16 +2210,16 @@ document.addEventListener('click', e => {
   }
 });
 
-// ── Init (default: Last 3M) ───────────────────────────────────────────────────
+// ── Init (default: This Month) ────────────────────────────────────────────────
 document.getElementById('meta-line').textContent =
   'Last updated: ' + D.generated_at + '  ·  Data source: Google Ads API + Looker';
 document.getElementById('footer-note').innerHTML =
   'Paid Search = Google &amp; Bing SEM  ·  Paid Other = Facebook, Display &amp; Demand Gen  ·  ' +
   'Demand Gen = DG/DIS campaigns (shown as separate row in campaign type table)  ·  Generated: ' + D.generated_at;
 
-const { fromYM: f0, toYM: t0 } = periodToRange('3');
+const { fromYM: f0, toYM: t0 } = periodToRange('1');
 selFrom.value = f0; selTo.value = t0;
-setActiveBtn('3');
+setActiveBtn('1');
 render(f0, t0);
 </script>
 </body>
