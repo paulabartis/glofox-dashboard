@@ -114,6 +114,15 @@
   .cc-metric .cc-val { font-size: 20px; font-weight: 700; color: #1E293B; margin-top: 3px; }
   .cc-metric .cc-sub { font-size: 11px; color: #94A3B8; }
 
+  /* ── Trend chart insights ── */
+  .trend-insight { font-size:12px; color:#64748B; margin-top:12px; padding:8px 12px;
+                   background:#F8FAFC; border-radius:6px; line-height:1.6; display:none; }
+  .trend-insight.loaded { display:block; }
+  .ti-good { color:#16A34A; font-weight:600; }
+  .ti-bad  { color:#DC2626; font-weight:600; }
+  .ti-warn { color:#D97706; font-weight:600; }
+  .ti-sep  { color:#CBD5E1; margin:0 6px; }
+
   /* ── MQL→SQL bar chart ── */
   .mql-chart-wrap   { padding:4px 0; }
   .mql-chart-row    { display:flex; align-items:center; gap:10px; padding:6px 0;
@@ -443,31 +452,34 @@
   <div class="section">
     <div class="section-title">
       Monthly Spend Trend
-      <span class="badge">By campaign type</span>
+      <span class="badge">Last 6 months · by campaign type</span>
     </div>
     <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
       <canvas id="chart-spend-trend" height="110"></canvas>
+      <div id="insight-spend" class="trend-insight"></div>
     </div>
   </div>
 
   <div class="section">
     <div class="section-title">
       Monthly MQL &amp; SQL Trend
-      <span class="badge">All campaign types combined</span>
+      <span class="badge">Last 6 months · all campaign types</span>
     </div>
     <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
       <canvas id="chart-mql-trend" height="110"></canvas>
+      <div id="insight-mql" class="trend-insight"></div>
     </div>
   </div>
 
   <!-- Cost/MQL Trend -->
   <div class="section">
     <div class="section-title">
-      Monthly Cost per MQL
-      <span class="badge">Spend efficiency trend</span>
+      Monthly Cost per MQL &amp; SQL
+      <span class="badge">Last 6 months · spend efficiency</span>
     </div>
     <div style="background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
       <canvas id="chart-costmql-trend" height="110"></canvas>
+      <div id="insight-costmql" class="trend-insight"></div>
     </div>
   </div>
 
@@ -1643,7 +1655,7 @@ let costMqlTrendChart = null;
 function renderTrendCharts(fromYM, toYM) {
   const rows = D.campaigns || [];
 
-  // Build full sorted month list, then filter to selected period
+  // Build full sorted month list — trend charts always show last 6 months
   const monthSet = new Set();
   for (const r of rows) {
     if (r.year && r.month) monthSet.add(`${r.year}-${String(r.month).padStart(2,'0')}`);
@@ -1651,11 +1663,22 @@ function renderTrendCharts(fromYM, toYM) {
   const allMonths = [...monthSet].sort();
   if (!allMonths.length) return;
 
-  const toInt = m => parseInt(m.replace('-', ''));
-  const months = (fromYM && toYM)
-    ? allMonths.filter(m => toInt(m) >= fromYM && toInt(m) <= toYM)
-    : allMonths;
+  // Always last 6 months (independent of period filter)
+  const months = allMonths.slice(-6);
   if (!months.length) return;
+
+  // Detect if last month is the current (partial) month
+  const now = new Date();
+  const curYM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const lastM = months[months.length - 1];
+  const prevM = months[months.length - 2];
+  const isPartialMonth = lastM === curYM;
+  const daysElapsed = isPartialMonth ? now.getDate() : null;
+  const daysInMonth = isPartialMonth
+    ? new Date(now.getFullYear(), now.getMonth()+1, 0).getDate() : null;
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const lastLabel = MONTHS_SHORT[parseInt(lastM.split('-')[1]) - 1];
+  const prevLabel = prevM ? MONTHS_SHORT[parseInt(prevM.split('-')[1]) - 1] : null;
 
   const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const monthLabels = months.map(m => {
@@ -1707,6 +1730,26 @@ function renderTrendCharts(fromYM, toYM) {
     });
   }
 
+  // Spend insight
+  const insightSpend = document.getElementById('insight-spend');
+  if (insightSpend) {
+    const totalByMonth = m => Object.values(spendByType).reduce((s,d) => s + (d[m]||0), 0);
+    const lastSpend = totalByMonth(lastM);
+    const prevSpend = prevM ? totalByMonth(prevM) : 0;
+    const avgSpend = months.slice(0,-1).reduce((s,m) => s + totalByMonth(m), 0) / Math.max(months.length - 1, 1);
+    const momDelta = prevSpend > 0 ? ((lastSpend - prevSpend) / prevSpend * 100) : null;
+    const momCls = momDelta === null ? '' : momDelta > 5 ? 'ti-warn' : momDelta < -5 ? 'ti-good' : '';
+    const momStr = momDelta !== null
+      ? `<span class="${momCls}">${momDelta > 0 ? '▲' : '▼'} ${Math.abs(momDelta).toFixed(0)}% vs ${prevLabel}</span>`
+      : '';
+    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(${daysElapsed}/${daysInMonth} days)</span>` : '';
+    insightSpend.innerHTML =
+      `<strong>${lastLabel} spend: ${fmt$(lastSpend)}${partialNote}</strong>`
+      + (momStr ? `<span class="ti-sep">·</span>${momStr}` : '')
+      + `<span class="ti-sep">·</span>5-mo avg: ${fmt$(Math.round(avgSpend))}`;
+    insightSpend.className = 'trend-insight loaded';
+  }
+
   // ── 2. MQL & SQL trend — dual line ────────────────────────────────────────
   const mqlByMonth = {};
   const sqlByMonth = {};
@@ -1754,6 +1797,33 @@ function renderTrendCharts(fromYM, toYM) {
         },
       },
     });
+  }
+
+  // MQL/SQL insight
+  const insightMql = document.getElementById('insight-mql');
+  if (insightMql) {
+    const lastMql = mqlByMonth[lastM] || 0;
+    const lastSql = sqlByMonth[lastM] || 0;
+    const prevMql = prevM ? (mqlByMonth[prevM] || 0) : 0;
+    const prevSql = prevM ? (sqlByMonth[prevM] || 0) : 0;
+    const rate    = lastMql > 0 ? lastSql / lastMql : null;
+    const prevRate = prevMql > 0 ? prevSql / prevMql : null;
+    const rateCls  = rate === null ? '' : rate >= 0.25 ? 'ti-good' : rate >= 0.15 ? 'ti-warn' : 'ti-bad';
+    const rateVsGoal = rate !== null
+      ? (rate >= 0.25
+          ? `<span class="ti-good">✓ above 25% goal</span>`
+          : `<span class="${rateCls}">${fmtPct(rate)} — ${Math.round((0.25 - rate) * lastMql)} SQLs short of 25% goal</span>`)
+      : '';
+    const mqlMom = prevMql > 0 ? ((lastMql - prevMql) / prevMql * 100) : null;
+    const mqlMomStr = mqlMom !== null
+      ? `MQL ${mqlMom > 0 ? '▲' : '▼'} <span class="${mqlMom >= 0 ? 'ti-good' : 'ti-bad'}">${Math.abs(mqlMom).toFixed(0)}% vs ${prevLabel}</span>`
+      : '';
+    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(${daysElapsed}/${daysInMonth} days)</span>` : '';
+    insightMql.innerHTML =
+      `<strong>${lastLabel}: ${lastMql.toLocaleString()} MQL · ${lastSql.toLocaleString()} SQL${partialNote}</strong>`
+      + `<span class="ti-sep">·</span>MQL→SQL: ${rateVsGoal}`
+      + (mqlMomStr ? `<span class="ti-sep">·</span>${mqlMomStr}` : '');
+    insightMql.className = 'trend-insight loaded';
   }
 
   // ── 3. Cost/MQL trend — line ───────────────────────────────────────────────
@@ -1816,6 +1886,30 @@ function renderTrendCharts(fromYM, toYM) {
         },
       },
     });
+  }
+
+  // Cost/MQL insight
+  const insightCostMql = document.getElementById('insight-costmql');
+  if (insightCostMql) {
+    const lastCpMql = cpMqlData[cpMqlData.length - 1];
+    const prevCpMql = cpMqlData.length > 1 ? cpMqlData[cpMqlData.length - 2] : null;
+    const firstCpMql = cpMqlData.find(v => v != null);  // oldest non-null in window
+    const trendDelta = (firstCpMql && lastCpMql) ? lastCpMql - firstCpMql : null;
+    const vsTarget   = lastCpMql != null ? lastCpMql - AOP_TARGET_CP_MQL : null;
+    const tgtCls     = vsTarget === null ? '' : vsTarget <= 0 ? 'ti-good' : vsTarget <= AOP_TARGET_CP_MQL * 0.1 ? 'ti-warn' : 'ti-bad';
+    const tgtStr     = vsTarget !== null
+      ? `<span class="${tgtCls}">${vsTarget <= 0 ? '✓ on target' : '▲ $' + Math.abs(vsTarget).toLocaleString() + ' above $' + AOP_TARGET_CP_MQL + ' goal'}</span>`
+      : '';
+    const trendStr   = trendDelta !== null
+      ? `6-mo trend: <span class="${trendDelta <= 0 ? 'ti-good' : 'ti-bad'}">${trendDelta <= 0 ? '↓ improving' : '↑ worsening'} ($${Math.abs(Math.round(trendDelta))} ${trendDelta <= 0 ? 'lower' : 'higher'} than ${MONTHS_SHORT[parseInt(months[0].split('-')[1])-1]})</span>`
+      : '';
+    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(${daysElapsed}/${daysInMonth} days)</span>` : '';
+    insightCostMql.innerHTML = lastCpMql != null
+      ? `<strong>${lastLabel} Cost/MQL: $${lastCpMql.toLocaleString()}${partialNote}</strong>`
+        + `<span class="ti-sep">·</span>${tgtStr}`
+        + (trendStr ? `<span class="ti-sep">·</span>${trendStr}` : '')
+      : 'No Cost/MQL data for this period.';
+    insightCostMql.className = 'trend-insight loaded';
   }
 }
 
