@@ -363,6 +363,27 @@ def load_search_terms(service) -> list[dict]:
     return result
 
 
+def load_campaign_ids(service) -> dict[str, str]:
+    """
+    CampaignIds tab (written by sync_gads_to_sheet.py fetch_campaign_ids).
+    Returns {campaign_name: campaign_id} for Google Ads deep links.
+    Returns empty dict if tab doesn't exist yet.
+    """
+    try:
+        rows = read_tab(service, "CampaignIds")
+    except Exception:
+        return {}
+    result = {}
+    for row in rows[1:]:  # skip header
+        if len(row) < 2:
+            continue
+        campaign_id   = str(row[0]).strip()
+        campaign_name = str(row[1]).strip()
+        if campaign_id and campaign_name:
+            result[campaign_name] = campaign_id
+    return result
+
+
 def load_campaigns_data(service) -> list[dict]:
     """
     CampaignsData tab.
@@ -609,6 +630,7 @@ def build_campaign_rows(
 def compute_optimizations(
     campaign_rows: list[dict],
     adgroup_data: list[dict],
+    campaign_ids_map: dict[str, str] | None = None,
 ) -> list[dict]:
     """
     Analyse the most recent 3 months of campaign data and generate up to 10
@@ -737,66 +759,98 @@ def compute_optimizations(
         # P1 – Spend with 0 MQLs
         if cost > 300 and mql == 0:
             issues.append((1,
-                f"${cost:,.0f} spend but 0 MQLs — review landing page, "
-                "keyword match types, or audience targeting"))
+                f"${cost:,.0f} spend · 0 MQLs — "
+                f"1. Test LP form manually (Inspect > Network). "
+                f"2. Review search terms for off-target queries. "
+                f"3. Add exact-match negatives. "
+                f"4. Verify UTM tracking is capturing form submissions."))
 
         # P1 – Strong CTR but no MQL conversion (LP mismatch)
         if clk >= 30 and mql == 0 and ctr >= 0.025:
             issues.append((1,
-                f"Strong CTR ({ctr*100:.1f}%) but 0 MQLs from {clk:,} clicks "
-                "— landing page likely doesn't match ad intent"))
+                f"CTR {ctr*100:.1f}% · 0 MQLs from {clk:,} clicks — "
+                f"1. Check LP headline matches ad copy. "
+                f"2. Run session recording (Hotjar/FullStory) on the landing page. "
+                f"3. Reduce form to 5 fields or fewer. "
+                f"4. Add social proof or trust signals above the fold."))
 
         # P2 – Low CTR on Search
         if ch == "Paid Search" and imp >= 500 and ctr < 0.01:
             issues.append((2,
-                f"CTR {ctr*100:.1f}% is below 1% for Search — A/B test new "
-                "RSA headlines and review keyword-to-ad relevance"))
+                f"CTR {ctr*100:.1f}% vs 2–4% Search benchmark — "
+                f"1. Pin top-performing headline to position 1 in RSA. "
+                f"2. Add urgency or a specific offer in headline 2. "
+                f"3. Review keyword-to-ad-group relevance — tighten match types. "
+                f"4. Test new description lines with feature + CTA."))
 
         # P2 – Low CTR on Display / Demand Gen
         if ch == "Paid Other" and imp >= 5000 and ctr < 0.002:
             issues.append((2,
-                f"CTR {ctr*100:.2f}% is low for display/demand gen — "
-                "refresh creatives and test new audience segments"))
+                f"CTR {ctr*100:.2f}% for display/demand gen — "
+                f"1. Rotate in new creatives — refresh images and video thumbnails. "
+                f"2. Test a new audience segment (lookalike vs interest-based). "
+                f"3. Check frequency — if avg > 5, creative fatigue is likely the cause."))
 
         # P2 – CPC above benchmark
         if avg_cpc > 0 and clk >= 20 and cpc > avg_cpc * 1.6:
             issues.append((2,
-                f"CPC ${cpc:.2f} is {cpc/avg_cpc:.1f}× above average "
-                f"(${avg_cpc:.2f}) — review bid strategy and Quality Score"))
+                f"CPC ${cpc:.2f} is {cpc/avg_cpc:.1f}× avg (${avg_cpc:.2f}) — "
+                f"1. Lower Target CPA by 10% and monitor for 1 week. "
+                f"2. Improve Quality Score: tighten ad-to-keyword relevance and LP experience. "
+                f"3. Pause highest-CPC keywords with 0 conversions in last 90 days."))
 
         # P2 – Cost/MQL above benchmark
         if avg_cp_mql > 0 and mql >= 3 and cp_mql > avg_cp_mql * 1.5:
+            excess = round((cp_mql - avg_cp_mql) * mql)
             issues.append((2,
-                f"Cost/MQL ${cp_mql:,.0f} is {cp_mql/avg_cp_mql:.1f}× above "
-                f"average (${avg_cp_mql:,.0f}) — tighten audience or reduce bids"))
+                f"Cost/MQL ${cp_mql:,.0f} is {cp_mql/avg_cp_mql:.1f}× avg — "
+                f"fixing to benchmark saves ~${excess:,}. "
+                f"1. Pause keywords with $50+ spend and 0 MQLs. "
+                f"2. Move broad match keywords to phrase or exact. "
+                f"3. Review LP relevance — ensure ad intent matches form offer."))
 
         # P2 – Very low click-to-MQL rate
         if clk >= 50 and mql > 0 and (mql / clk) < 0.005:
             issues.append((2,
-                f"Click-to-MQL {mql/clk*100:.2f}% — high form friction; "
-                "simplify fields or improve landing page copy"))
+                f"Click-to-MQL {mql/clk*100:.2f}% — "
+                f"1. A/B test a shorter LP variant with single CTA. "
+                f"2. Reduce required form fields. "
+                f"3. Add a progress indicator to the form. "
+                f"4. Check mobile LP load speed (target < 3s)."))
 
         # P1/P2 – Low MQL→SQL rate (goal = 25%)
         if mql >= 5 and mql_sql < 0.15:
+            missed = round(mql * (0.25 - mql_sql))
             issues.append((1,
-                f"MQL→SQL {mql_sql*100:.0f}% is critically low (goal: 25%) — "
-                "review lead scoring thresholds and sales routing speed"))
+                f"MQL→SQL {mql_sql*100:.0f}% is critically low — ~{missed} missed SQLs vs 25% goal. "
+                f"1. Pull MQL list in Salesforce and check rejection reasons. "
+                f"2. Review ICP criteria — are ad keywords attracting the right buyer segment? "
+                f"3. Check sales routing speed — MQLs should be followed up within 2 hrs. "
+                f"4. Lower MQL score threshold by 5 pts and monitor for 2 weeks."))
         elif mql >= 5 and mql_sql < 0.25:
+            missed = round(mql * (0.25 - mql_sql))
             issues.append((2,
-                f"MQL→SQL {mql_sql*100:.0f}% is below goal of 25% — "
-                "review lead qualification criteria or sales follow-up cadence"))
+                f"MQL→SQL {mql_sql*100:.0f}% below 25% goal — ~{missed} missed SQLs. "
+                f"1. Review recently rejected MQLs for patterns. "
+                f"2. Confirm ICP alignment between ad targeting and LP messaging. "
+                f"3. Check if MQLs are routing to the correct sales rep and region."))
 
         # P3 – MQLs but 0 SQLs
         if mql >= 5 and sql == 0:
             issues.append((3,
-                f"{mql} MQLs but 0 SQLs — investigate handoff to sales; "
-                "may need to tighten the MQL definition"))
+                f"{mql} MQLs · 0 SQLs — "
+                f"1. Verify Salesforce campaign attribution is set correctly. "
+                f"2. Check sales handoff — confirm MQLs are being actioned, not stalled. "
+                f"3. Review MQL definition for this campaign type."))
 
         # P3 – Near-zero impressions relative to spend
         if cost > 200 and imp < 100 and clk == 0:
             issues.append((3,
-                f"Only {imp} impressions on ${cost:,.0f} spend — check bidding "
-                "eligibility, Quality Score, or audience size"))
+                f"Only {imp} impressions on ${cost:,.0f} spend — "
+                f"1. Check campaign status and ad approval. "
+                f"2. Review bid — may be too low to enter auction. "
+                f"3. Check audience or keyword eligibility (too narrow?). "
+                f"4. Review Quality Score for active keywords."))
 
         # ── Sort, cap, severity ───────────────────────────────────────────────
         issues.sort(key=lambda x: x[0])
@@ -812,6 +866,19 @@ def compute_optimizations(
         type_lbl = _TYPE_LABELS.get(ct, ct)
         display_name = f"{type_lbl} · {reg}"
 
+        # Campaign IDs for Google Ads deep links — derive from adgroup_data campaign names
+        ids_map = campaign_ids_map or {}
+        campaign_ids: list[str] = []
+        if ids_map:
+            seen_names: set[str] = set()
+            for ag in adgroup_data:
+                if ag["campaign_type"] == ct and ag["region"] == reg:
+                    cname = ag["campaign"]
+                    if cname not in seen_names:
+                        seen_names.add(cname)
+                        if cname in ids_map:
+                            campaign_ids.append(ids_map[cname])
+
         result.append({
             "name":          f"{ct}_{reg}",
             "display_name":  display_name,
@@ -825,9 +892,10 @@ def compute_optimizations(
                 "mql":         mql,
                 "sql":         sql,
             },
-            "issues":       [t for _, t in top_issues],
-            "severity":     severity,
-            "period_label": period_label,
+            "issues":        [t for _, t in top_issues],
+            "severity":      severity,
+            "period_label":  period_label,
+            "campaign_ids":  campaign_ids,
         })
 
     # Sort by type order → region order → name
@@ -1007,6 +1075,7 @@ def main():
     search_terms = load_search_terms(service)
     is_weekly = load_is_weekly(service)
     change_events = load_change_events(service)
+    campaign_ids_map = load_campaign_ids(service)
     print(f"  GadsData: {len(gads_data)} rows")
     print(f"  CampaignsData (paid PPC): {len(campaigns_data)} rows")
     print(f"  MonthlySummary: {len(monthly_summary)} periods")
@@ -1020,7 +1089,7 @@ def main():
     print(f"  Merged campaign rows: {len(campaign_rows)}")
 
     print("[4/5] Building dashboard payload...")
-    optimizations = compute_optimizations(campaign_rows, adgroup_data)
+    optimizations = compute_optimizations(campaign_rows, adgroup_data, campaign_ids_map)
     high   = sum(1 for o in optimizations if o["severity"] == "high")
     medium = sum(1 for o in optimizations if o["severity"] == "medium")
     print(f"  Optimizations: {len(optimizations)} campaigns "

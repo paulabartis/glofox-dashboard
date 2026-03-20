@@ -274,6 +274,20 @@
   .opt-issues li:last-child { border-bottom:none; }
   .opt-issues li::before { content:'•'; color:#CBD5E1; flex-shrink:0; margin-top:1px; }
   .opt-ok { font-size:12px; color:#16A34A; font-weight:600; padding:6px 0; }
+  .opt-adgroups { margin-top:10px; border-top:1px solid #F1F5F9; padding-top:8px; }
+  .opt-adgroups-title { font-size:10px; font-weight:700; color:#94A3B8; text-transform:uppercase;
+                        letter-spacing:.4px; margin-bottom:5px; }
+  .opt-ag-row { display:flex; justify-content:space-between; align-items:center;
+                font-size:11px; color:#475569; padding:3px 0;
+                border-bottom:1px solid #F8FAFC; }
+  .opt-ag-row:last-child { border-bottom:none; }
+  .opt-ag-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                 padding-right:8px; }
+  .opt-ag-meta { display:flex; gap:8px; flex-shrink:0; font-variant-numeric:tabular-nums; }
+  .opt-ag-meta span { color:#94A3B8; }
+  .opt-gads-link { display:inline-block; margin-top:8px; font-size:11px; color:#3B82F6;
+                   text-decoration:none; font-weight:600; }
+  .opt-gads-link:hover { text-decoration:underline; }
 
   /* ── Opt filter bar ── */
   .opt-filter-bar {
@@ -983,6 +997,46 @@ function renderOptimizationsTab() {
     const issuesHtml = c.issues.length > 0
       ? `<ul class="opt-issues">${c.issues.map(i => `<li>${i}</li>`).join('')}</ul>`
       : `<div class="opt-ok">✓ No issues found for this period</div>`;
+
+    // Worst-3 ad groups by cost for this campaign type × region
+    const { fromYM: agFrom, toYM: agTo } = lastRange;
+    const agRows = (D.adgroups || []).filter(r =>
+      r.campaign_type === c.campaign_type && r.region === c.region &&
+      r.year * 100 + r.month >= agFrom && r.year * 100 + r.month <= agTo
+    );
+    const agAgg = {};
+    for (const r of agRows) {
+      if (!agAgg[r.adgroup]) agAgg[r.adgroup] = { cost:0, clicks:0, impressions:0 };
+      agAgg[r.adgroup].cost        += r.cost;
+      agAgg[r.adgroup].clicks      += r.clicks;
+      agAgg[r.adgroup].impressions += r.impressions;
+    }
+    const topAgs = Object.entries(agAgg)
+      .sort((a,b) => b[1].cost - a[1].cost)
+      .slice(0, 3);
+    const agHtml = topAgs.length ? `
+      <div class="opt-adgroups">
+        <div class="opt-adgroups-title">Top ad groups by spend</div>
+        ${topAgs.map(([name, ag]) => {
+          const agCtr = ag.impressions > 0 ? fmtPct(ag.clicks / ag.impressions) : '—';
+          const agCpc = ag.clicks > 0 ? fmt$(ag.cost / ag.clicks) : '—';
+          return `<div class="opt-ag-row">
+            <div class="opt-ag-name" title="${name}">${name}</div>
+            <div class="opt-ag-meta">
+              <span>${fmt$(ag.cost)}</span>
+              <span>CTR ${agCtr}</span>
+              <span>CPC ${agCpc}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    // Google Ads deep link (first campaign ID if available)
+    const cids = c.campaign_ids || [];
+    const gadsLink = cids.length
+      ? `<a class="opt-gads-link" href="https://ads.google.com/aw/campaigns?campaignId=${cids[0]}" target="_blank" rel="noopener">Open in Google Ads →</a>`
+      : '';
+
     html += `
 <div class="opt-card sev-${c.severity}" data-sev="${c.severity}" data-type="${c.campaign_type || 'Other'}" id="opt-card-${slugify(c.campaign_type)}-${slugify(c.region)}">
   <div class="opt-card-name">
@@ -1003,6 +1057,8 @@ function renderOptimizationsTab() {
     <div class="opt-metric"><div class="opt-metric-label">CPC</div><div class="opt-metric-val">${cpc}</div></div>
   </div>
   ${issuesHtml}
+  ${agHtml}
+  ${gadsLink}
 </div>`;
   }
   grid.innerHTML = html;

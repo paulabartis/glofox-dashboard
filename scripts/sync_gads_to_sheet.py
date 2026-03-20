@@ -41,6 +41,7 @@ GADS_TAB = "GadsData"
 ADGROUP_TAB = "AdGroupData"
 IS_TAB = "ImpShareWeekly"
 SEARCH_TERMS_TAB = "SearchTermsData"
+CAMPAIGN_IDS_TAB = "CampaignIds"
 GLOFOX_CUSTOMER_ID = "6129012053"
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -570,6 +571,42 @@ def write_change_events_to_sheet(service, rows: list[dict]) -> None:
     print(f"  Written {len(rows)} change events to '{tab}' tab.")
 
 
+# ── Campaign IDs ─────────────────────────────────────────────────────────────
+
+def fetch_campaign_ids(client: GoogleAdsClient) -> list[dict]:
+    """Fetch active campaign ID → name mapping for Google Ads deep links."""
+    ga_service = client.get_service("GoogleAdsService")
+    query = """
+        SELECT campaign.id, campaign.name
+        FROM campaign
+        WHERE campaign.status != 'REMOVED'
+        ORDER BY campaign.name
+    """
+    response = ga_service.search(customer_id=GLOFOX_CUSTOMER_ID, query=query)
+    return [
+        {"campaign_id": str(row.campaign.id), "campaign_name": row.campaign.name}
+        for row in response
+    ]
+
+
+def write_campaign_ids_to_sheet(service, rows: list[dict]) -> None:
+    """Clear CampaignIds tab and write fresh campaign ID → name mapping."""
+    ensure_tab_exists(service, CAMPAIGN_IDS_TAB)
+    service.spreadsheets().values().clear(
+        spreadsheetId=SHEET_ID, range=f"{CAMPAIGN_IDS_TAB}!A:B"
+    ).execute()
+    values = [["campaign_id", "campaign_name"]] + [
+        [r["campaign_id"], r["campaign_name"]] for r in rows
+    ]
+    service.spreadsheets().values().update(
+        spreadsheetId=SHEET_ID,
+        range=f"{CAMPAIGN_IDS_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": values},
+    ).execute()
+    print(f"  Written {len(rows)} rows to '{CAMPAIGN_IDS_TAB}' tab.")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -582,7 +619,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"[1/6] Connecting to Google Ads API...")
+    print(f"[1/7] Connecting to Google Ads API...")
     try:
         gads_client = get_gads_client()
     except KeyError as e:
@@ -591,25 +628,25 @@ def main():
               "GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_CUSTOMER_ID")
         raise
 
-    print(f"[2/6] Fetching last {args.months} months of campaign data from Google Ads...")
+    print(f"[2/7] Fetching last {args.months} months of campaign data from Google Ads...")
     rows = fetch_gads_monthly(gads_client, args.months)
     print(f"  Retrieved {len(rows)} campaign-month rows.")
 
-    print(f"[3/6] Fetching last {args.months} months of ad group data from Google Ads...")
+    print(f"[3/7] Fetching last {args.months} months of ad group data from Google Ads...")
     ag_rows = fetch_adgroup_monthly(gads_client, args.months)
     print(f"  Retrieved {len(ag_rows)} ad group-month rows.")
 
-    print(f"[4/6] Fetching last {args.months} months of search terms from Google Ads...")
+    print(f"[4/7] Fetching last {args.months} months of search terms from Google Ads...")
     st_rows = fetch_search_terms(gads_client, args.months)
     print(f"  Retrieved {len(st_rows)} search term-month rows.")
 
-    print(f"[5/6] Fetching last 16 weeks of Impression Share + last 14 days of change events...")
+    print(f"[5/7] Fetching last 16 weeks of Impression Share + last 14 days of change events...")
     is_rows = fetch_impression_share_weekly(gads_client, weeks=16)
     print(f"  Retrieved {len(is_rows)} weekly IS rows.")
     change_rows = fetch_change_events(gads_client, days=14)
     print(f"  Retrieved {len(change_rows)} change events.")
 
-    print(f"[6/6] Writing to Google Sheet...")
+    print(f"[6/7] Writing to Google Sheet...")
     sheets_service = get_sheets_service()
     write_to_sheet(sheets_service, rows)
     write_adgroup_to_sheet(sheets_service, ag_rows)
@@ -617,7 +654,12 @@ def main():
     write_is_to_sheet(sheets_service, is_rows)
     write_change_events_to_sheet(sheets_service, change_rows)
 
-    print("\nDone! GadsData, AdGroupData, SearchTermsData, ImpShareWeekly, and ChangeEvents tabs are up to date.")
+    print(f"\n[7/7] Fetching campaign ID → name mapping...")
+    cid_rows = fetch_campaign_ids(gads_client)
+    print(f"  Retrieved {len(cid_rows)} campaigns.")
+    write_campaign_ids_to_sheet(sheets_service, cid_rows)
+
+    print("\nDone! GadsData, AdGroupData, SearchTermsData, ImpShareWeekly, ChangeEvents, and CampaignIds tabs are up to date.")
 
 
 if __name__ == "__main__":
