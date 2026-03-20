@@ -1673,10 +1673,14 @@ function renderTrendCharts(fromYM, toYM) {
   const lastM = months[months.length - 1];
   const prevM = months[months.length - 2];
   const isPartialMonth = lastM === curYM;
-  const daysElapsed = isPartialMonth ? now.getDate() : null;
-  const daysInMonth = isPartialMonth
-    ? new Date(now.getFullYear(), now.getMonth()+1, 0).getDate() : null;
+
+  // Last complete Saturday — data cutoff aligned with Looker export
+  // JS getDay(): Sun=0 Mon=1 ... Sat=6  → days back = (getDay() + 1) % 7
+  const lastSat = new Date(now);
+  lastSat.setDate(now.getDate() - (now.getDay() + 1) % 7);
   const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const lastSatLabel = MONTHS_SHORT[lastSat.getMonth()] + ' ' + lastSat.getDate();
+
   const lastLabel = MONTHS_SHORT[parseInt(lastM.split('-')[1]) - 1];
   const prevLabel = prevM ? MONTHS_SHORT[parseInt(prevM.split('-')[1]) - 1] : null;
 
@@ -1741,7 +1745,7 @@ function renderTrendCharts(fromYM, toYM) {
     const momStr = momDelta !== null
       ? `<span class="${momCls}">${momDelta > 0 ? '▲' : '▼'} ${Math.abs(momDelta).toFixed(0)}% vs ${prevLabel}</span>`
       : '';
-    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(${daysElapsed}/${daysInMonth} days)</span>` : '';
+    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(through ${lastSatLabel})</span>` : '';
     insightSpend.innerHTML =
       `<strong>${lastLabel} spend: ${fmt$(lastSpend)}${partialNote}</strong>`
       + (momStr ? `<span class="ti-sep">·</span>${momStr}` : '')
@@ -1817,7 +1821,7 @@ function renderTrendCharts(fromYM, toYM) {
     const mqlMomStr = mqlMom !== null
       ? `MQL ${mqlMom > 0 ? '▲' : '▼'} <span class="${mqlMom >= 0 ? 'ti-good' : 'ti-bad'}">${Math.abs(mqlMom).toFixed(0)}% vs ${prevLabel}</span>`
       : '';
-    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(${daysElapsed}/${daysInMonth} days)</span>` : '';
+    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(through ${lastSatLabel})</span>` : '';
     insightMql.innerHTML =
       `<strong>${lastLabel}: ${lastMql.toLocaleString()} MQL · ${lastSql.toLocaleString()} SQL${partialNote}</strong>`
       + `<span class="ti-sep">·</span>MQL→SQL: ${rateVsGoal}`
@@ -1902,7 +1906,7 @@ function renderTrendCharts(fromYM, toYM) {
     const trendStr   = trendDelta !== null
       ? `6-mo trend: <span class="${trendDelta <= 0 ? 'ti-good' : 'ti-bad'}">${trendDelta <= 0 ? '↓ improving' : '↑ worsening'} ($${Math.abs(Math.round(trendDelta))} ${trendDelta <= 0 ? 'lower' : 'higher'} than ${MONTHS_SHORT[parseInt(months[0].split('-')[1])-1]})</span>`
       : '';
-    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(${daysElapsed}/${daysInMonth} days)</span>` : '';
+    const partialNote = isPartialMonth ? ` <span style="color:#94A3B8">(through ${lastSatLabel})</span>` : '';
     insightCostMql.innerHTML = lastCpMql != null
       ? `<strong>${lastLabel} Cost/MQL: $${lastCpMql.toLocaleString()}${partialNote}</strong>`
         + `<span class="ti-sep">·</span>${tgtStr}`

@@ -95,6 +95,19 @@ def months_ago_start(n: int) -> date:
     return date(year, month, 1)
 
 
+def last_complete_saturday() -> date:
+    """
+    Return the most recent Saturday (inclusive of today if today is Saturday).
+    Glofox week = Sunday–Saturday, so this is always the last complete week-end.
+    On Monday the sync runs, this returns the Saturday 2 days prior.
+    """
+    today = date.today()
+    # weekday(): Mon=0 ... Sat=5 Sun=6
+    # days since last Saturday = (weekday + 2) % 7
+    days_back = (today.weekday() + 2) % 7
+    return today - timedelta(days=days_back)
+
+
 # ── Google Ads data fetch ─────────────────────────────────────────────────────
 
 def fetch_gads_monthly(client: GoogleAdsClient, months: int) -> list[dict]:
@@ -109,7 +122,7 @@ def fetch_gads_monthly(client: GoogleAdsClient, months: int) -> list[dict]:
         List of dicts: campaign_name, year, month, impressions, clicks, cost
     """
     start = months_ago_start(months)
-    end = date.today()
+    end = last_complete_saturday()  # align with Looker export (always through last Sat)
 
     ga_service = client.get_service("GoogleAdsService")
 
@@ -151,7 +164,7 @@ def fetch_adgroup_monthly(client: GoogleAdsClient, months: int) -> list[dict]:
         List of dicts: campaign_name, adgroup_name, year, month, impressions, clicks, cost
     """
     start = months_ago_start(months)
-    end = date.today()
+    end = last_complete_saturday()  # align with Looker export (always through last Sat)
 
     ga_service = client.get_service("GoogleAdsService")
 
@@ -197,7 +210,7 @@ def fetch_search_terms(client: GoogleAdsClient, months: int) -> list[dict]:
                        impressions, clicks, cost, conversions
     """
     start = months_ago_start(months)
-    end = date.today()
+    end = last_complete_saturday()  # align with Looker export (always through last Sat)
 
     ga_service = client.get_service("GoogleAdsService")
 
@@ -628,7 +641,8 @@ def main():
               "GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_CUSTOMER_ID")
         raise
 
-    print(f"[2/7] Fetching last {args.months} months of campaign data from Google Ads...")
+    cutoff = last_complete_saturday()
+    print(f"[2/7] Fetching last {args.months} months of campaign data through {cutoff} (last complete Saturday)...")
     rows = fetch_gads_monthly(gads_client, args.months)
     print(f"  Retrieved {len(rows)} campaign-month rows.")
 
