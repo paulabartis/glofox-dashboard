@@ -1680,7 +1680,6 @@ function renderTrendCharts(fromYM, toYM) {
   const lastLabel = MONTHS_SHORT[parseInt(lastM.split('-')[1]) - 1];
   const prevLabel = prevM ? MONTHS_SHORT[parseInt(prevM.split('-')[1]) - 1] : null;
 
-  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const monthLabels = months.map(m => {
     const [y, mo] = m.split('-').map(Number);
     return MONTHS_SHORT[mo - 1] + ' ' + String(y).slice(2);
