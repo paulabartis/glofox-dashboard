@@ -1350,6 +1350,7 @@ def build_channel_view(
         "Demand Gen":         {"mql_sql_lo": 0.18, "mql_sql_hi": 0.26},
         "Bing":               {"mql_sql_lo": 0.28, "mql_sql_hi": 0.35},
         "Capterra":           {"mql_sql_lo": 0.15, "mql_sql_hi": 0.25},
+        "Meta awareness":     {"mql_sql_lo": 0.08, "mql_sql_hi": 0.15},
     }
 
     mql_sql_by_channel = compute_channel_mql_sql(campaigns_data)
@@ -1366,7 +1367,7 @@ def build_channel_view(
     # For any channel with CampaignsData MQL/SQL but no spend row yet
     # (e.g. LinkedIn, Bing before sync scripts run), add a spend=0 stub row
     # so the MQL/SQL shows up in the Overview immediately.
-    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing", "Capterra"}
+    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing", "Capterra", "Meta awareness"}
     covered = {(r["month"], r["channel"]) for r in all_rows}
     for month_key, ch_data in mql_sql_by_channel.items():
         for channel, ms in ch_data.items():
