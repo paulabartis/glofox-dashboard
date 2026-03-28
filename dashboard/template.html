@@ -506,6 +506,7 @@
   <!-- Tab navigation -->
   <div class="tab-nav">
     <button class="tab-btn active" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="campaign">Campaign Overview</button>
     <button class="tab-btn" data-tab="adgroups">Ad Groups</button>
     <button class="tab-btn" data-tab="opts">Campaign Optimizations</button>
     <button class="tab-btn" data-tab="agissues">Ad Group Issues</button>
@@ -647,6 +648,95 @@
   </div>
 
   </div><!-- /tab-overview -->
+
+  <!-- Campaign Overview tab -->
+  <div id="tab-campaign" style="display:none">
+
+    <!-- KPI bar -->
+    <div class="section" style="padding:16px 20px">
+      <div id="kpi-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px"></div>
+    </div>
+
+    <!-- Full Funnel by Campaign Type -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Full Funnel by Campaign Type</h2>
+        <span class="section-tag">Google &amp; Bing PPC</span>
+      </div>
+      <table class="data-table">
+        <thead><tr>
+          <th>Campaign Type</th>
+          <th style="text-align:right">Cost</th>
+          <th style="text-align:right">MQL</th>
+          <th style="text-align:right">SQL</th>
+          <th style="text-align:right">MQL→SQL%</th>
+        </tr></thead>
+        <tbody id="tbody-type"></tbody>
+        <tfoot id="tfoot-type"></tfoot>
+      </table>
+    </div>
+
+    <!-- Full Funnel by Region -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Full Funnel by Region</h2>
+        <span class="section-tag">NAM · EMEA · APAC</span>
+      </div>
+      <table class="data-table">
+        <thead><tr>
+          <th>Region</th>
+          <th style="text-align:right">Cost</th>
+          <th style="text-align:right">MQL</th>
+          <th style="text-align:right">SQL</th>
+          <th style="text-align:right">MQL→SQL%</th>
+        </tr></thead>
+        <tbody id="tbody-region"></tbody>
+        <tfoot id="tfoot-region"></tfoot>
+      </table>
+    </div>
+
+    <!-- Conversions by Region & Campaign Type -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Conversions by Region &amp; Campaign Type</h2>
+        <span class="section-tag">MQL · SQL · Rate</span>
+      </div>
+      <table class="data-table">
+        <thead><tr>
+          <th>Region</th><th>Campaign Type</th>
+          <th style="text-align:right">Cost</th>
+          <th style="text-align:right">MQL</th>
+          <th style="text-align:right">SQL</th>
+          <th style="text-align:right">MQL→SQL%</th>
+        </tr></thead>
+        <tbody id="tbody-region-type"></tbody>
+      </table>
+    </div>
+
+    <!-- MQL→SQL bar chart -->
+    <div class="section">
+      <div class="section-header">
+        <h2>MQL→SQL Conversion Rate by Campaign</h2>
+        <span class="section-tag" style="color:#10B981;border-color:#10B981">Goal: 25%</span>
+      </div>
+      <div id="mql-chart"></div>
+    </div>
+
+    <!-- Paid Search vs Paid Other -->
+    <div class="section" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div>
+        <h3 style="font-size:13px;font-weight:600;color:#64748B;margin-bottom:12px">Paid Search vs. Paid Other — MQL:SQL Comparison</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div id="card-search" class="compare-card"></div>
+          <div id="card-other"  class="compare-card"></div>
+        </div>
+      </div>
+      <div>
+        <canvas id="chart-compare" height="180"></canvas>
+      </div>
+    </div>
+
+  </div><!-- /tab-campaign -->
 
   <!-- Ad Groups tab -->
   <div id="tab-adgroups" style="display:none">
@@ -2722,6 +2812,23 @@ function renderChannelOverview(month) {
   }
 }
 
+function renderCampaignOverview(fromYM, toYM) {
+  const fc = filterByRange(D.campaigns,    fromYM, toYM);
+  const fk = filterByRange(D.monthly_kpis, fromYM, toYM);
+  renderKpis(fk);
+  renderFunnelTable('tbody-type',   'tfoot-type',   aggregate(fc,'campaign_type'), TYPE_ORDER);
+  renderFunnelTable('tbody-region', 'tfoot-region', aggregate(fc,'region'),        REGION_ORDER);
+  renderRegionTypeTable(fc);
+  renderMqlSqlChart(fc);
+  const empty  = { cost:0, mql:0, sql:0 };
+  const byCh   = aggregate(fc, 'channel');
+  const search = byCh['Paid Search'] || {...empty};
+  const pother = byCh['Paid Other']  || {...empty};
+  renderCompareCard('card-search', 'Paid Search', 'Google &amp; Bing SEM campaigns',              search);
+  renderCompareCard('card-other',  'Paid Other',  'Facebook, Display &amp; Demand Gen campaigns', pother);
+  renderCompareChart(search, pother);
+}
+
 function render(fromYM, toYM) {
   lastRange = { fromYM, toYM };
   renderChannelOverview(toYM);
@@ -2768,12 +2875,14 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       b.classList.toggle('active', b.dataset.tab === tab)
     );
     document.getElementById('tab-overview').style.display     = tab === 'overview'     ? '' : 'none';
+    document.getElementById('tab-campaign').style.display     = tab === 'campaign'     ? '' : 'none';
     document.getElementById('tab-adgroups').style.display     = tab === 'adgroups'     ? '' : 'none';
     document.getElementById('tab-opts').style.display         = tab === 'opts'         ? '' : 'none';
     document.getElementById('tab-agissues').style.display     = tab === 'agissues'     ? '' : 'none';
     document.getElementById('tab-changes').style.display      = tab === 'changes'      ? '' : 'none';
     document.getElementById('tab-summary').style.display      = tab === 'summary'      ? '' : 'none';
     document.getElementById('tab-searchterms').style.display  = tab === 'searchterms'  ? '' : 'none';
+    if (tab === 'campaign')    renderCampaignOverview(lastRange.fromYM, lastRange.toYM);
     if (tab === 'adgroups')    renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
     if (tab === 'opts')        renderOptimizationsTab();
     if (tab === 'agissues')    renderAdGroupIssuesTab();
