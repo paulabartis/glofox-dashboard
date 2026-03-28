@@ -1350,6 +1350,25 @@ def build_channel_view(
     # Merged: Google from GadsData, everything else from ChannelSummary
     all_rows = gads_channel_rows + non_gads_rows
 
+    # For any channel with CampaignsData MQL/SQL but no spend row yet
+    # (e.g. LinkedIn, Bing before sync scripts run), add a spend=0 stub row
+    # so the MQL/SQL shows up in the Overview immediately.
+    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "Retargeting", "Bing"}
+    covered = {(r["month"], r["channel"]) for r in all_rows}
+    for month_key, ch_data in mql_sql_by_channel.items():
+        for channel, ms in ch_data.items():
+            if (month_key, channel) not in covered and (ms["mql"] > 0 or ms["sql"] > 0):
+                ch_type = "sql" if channel in _SQL_CHANNELS else "awareness"
+                all_rows.append({
+                    "month": month_key, "channel": channel, "channel_type": ch_type,
+                    "source": "campaigns", "budget": 0.0,
+                    "spend": 0.0, "impressions": 0, "clicks": 0,
+                    "cpm": 0.0, "ctr": 0.0, "cpc": 0.0,
+                    "reach": 0, "freq": 0.0, "vcr": None,
+                    "leads": 0, "cpl": 0.0, "brand_lift": None, "assisted_conv": 0,
+                })
+                covered.add((month_key, channel))
+
     # Attach MQL/SQL to channel rows
     enriched = []
     for r in all_rows:
