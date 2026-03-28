@@ -1042,7 +1042,7 @@ def compute_adgroup_optimizations(adgroup_data: list[dict]) -> list[dict]:
 # ── Channel view (CMO multi-channel overview) ─────────────────────────────────
 
 _CHANNEL_ORDER = [
-    "Google Search", "LinkedIn Sponsored", "Retargeting", "Bing",
+    "Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing",
     "Meta awareness", "YouTube pre-roll", "Programmatic display", "Podcast sponsorship",
 ]
 
@@ -1050,19 +1050,21 @@ _CHANNEL_ORDER = [
 def classify_google_channel(name: str) -> tuple:
     """Classify a Google Ads readable campaign name → (channel_label, channel_type)."""
     n = name.upper()
-    if "RETARGET" in n or "REMARKETING" in n:
-        return ("Retargeting", "sql")
+    if "PMAX" in n or "PERFORMANCE MAX" in n:
+        return ("PMax", "sql")
+    if "DEMAND GEN" in n or "DEMANDGEN" in n:
+        return ("Demand Gen", "sql")
     if "YOUTUBE" in n or "VIDEO" in n:
         return ("YouTube pre-roll", "awareness")
     if "DISPLAY" in n or "BANNER" in n:
         return ("Programmatic display", "awareness")
-    if "DEMAND GEN" in n or "DEMANDGEN" in n:
-        return ("Retargeting", "sql")
-    if "PMAX" in n or "PERFORMANCE MAX" in n or "PROSPECT" in n:
-        return ("Retargeting", "sql")
+    if "RETARGET" in n or "REMARKETING" in n or "PROSPECT" in n:
+        return ("Demand Gen", "sql")
     tokens = set(n.split())
-    if {"DG", "DIS"} & tokens:
-        return ("Retargeting", "sql")
+    if "DG" in tokens:
+        return ("Demand Gen", "sql")
+    if "DIS" in tokens:
+        return ("Programmatic display", "awareness")
     return ("Google Search", "sql")
 
 
@@ -1115,21 +1117,28 @@ def parse_channel(name: str) -> str:
     Convention: SEGMENT_Direction_{Provider}_PPC_{ChannelType}_{CampaignType}_{Region}_{Date}
     """
     parts = name.upper().split("_")
-    if "LINKEDIN" in parts:
+    provider = parts[2] if len(parts) > 2 else ""
+    # Provider-level routing (catches LinkedIn, Bing, Meta, YouTube regardless of channel type)
+    if provider in ("LINKEDIN",) or "LINKEDIN" in parts:
         return "LinkedIn Sponsored"
-    if "BING" in parts or "MICROSOFT" in parts:
+    if provider in ("BING", "MICROSOFT") or "BING" in parts or "MICROSOFT" in parts:
         return "Bing"
-    if "FB" in parts or "META" in parts or "FACEBOOK" in parts:
+    if provider in ("FACEBOOK", "INSTAGRAM", "META", "FB") or "FB" in parts or "META" in parts:
         return "Meta awareness"
-    if "YOUTUBE" in parts or "YT" in parts:
+    if provider in ("YOUTUBE",) or "YOUTUBE" in parts or "YT" in parts:
         return "YouTube pre-roll"
     if "PODCAST" in parts:
         return "Podcast sponsorship"
-    # Google campaigns — distinguish by channel type
+    # Google campaigns — distinguish by channel type token
+    if "PMAX" in parts or "PM" in parts:
+        return "PMax"
     if "DIS" in parts or "DISPLAY" in parts:
         return "Programmatic display"
-    if "DG" in parts or "SM" in parts:
-        return "Retargeting"
+    if "DG" in parts or "DGEN" in parts or "DEMANDGEN" in parts:
+        return "Demand Gen"
+    if "SM" in parts:
+        # SM (social/display) without a social provider = Demand Gen
+        return "Demand Gen"
     # Default: Google Search SEM
     return "Google Search"
 
@@ -1335,7 +1344,8 @@ def build_channel_view(
     BENCHMARKS = {
         "Google Search":      {"mql_sql_lo": 0.28, "mql_sql_hi": 0.35},
         "LinkedIn Sponsored": {"mql_sql_lo": 0.20, "mql_sql_hi": 0.28},
-        "Retargeting":        {"mql_sql_lo": 0.25, "mql_sql_hi": 0.32},
+        "PMax":               {"mql_sql_lo": 0.22, "mql_sql_hi": 0.30},
+        "Demand Gen":         {"mql_sql_lo": 0.18, "mql_sql_hi": 0.26},
         "Bing":               {"mql_sql_lo": 0.28, "mql_sql_hi": 0.35},
     }
 
@@ -1353,7 +1363,7 @@ def build_channel_view(
     # For any channel with CampaignsData MQL/SQL but no spend row yet
     # (e.g. LinkedIn, Bing before sync scripts run), add a spend=0 stub row
     # so the MQL/SQL shows up in the Overview immediately.
-    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "Retargeting", "Bing"}
+    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing"}
     covered = {(r["month"], r["channel"]) for r in all_rows}
     for month_key, ch_data in mql_sql_by_channel.items():
         for channel, ms in ch_data.items():
