@@ -1053,16 +1053,16 @@ def classify_google_channel(name: str) -> tuple:
     if "PMAX" in n or "PERFORMANCE MAX" in n:
         return ("PMax", "sql")
     if "DEMAND GEN" in n or "DEMANDGEN" in n:
-        return ("Demand Gen", "sql")
+        return ("Demand Gen", "awareness")
     if "YOUTUBE" in n or "VIDEO" in n:
         return ("YouTube pre-roll", "awareness")
     if "DISPLAY" in n or "BANNER" in n:
         return ("Programmatic display", "awareness")
     if "RETARGET" in n or "REMARKETING" in n or "PROSPECT" in n:
-        return ("Demand Gen", "sql")
+        return ("Demand Gen", "awareness")
     tokens = set(n.split())
     if "DG" in tokens:
-        return ("Demand Gen", "sql")
+        return ("Demand Gen", "awareness")
     if "DIS" in tokens:
         return ("Programmatic display", "awareness")
     return ("Google Search", "sql")
@@ -1367,7 +1367,7 @@ def build_channel_view(
     # For any channel with CampaignsData MQL/SQL but no spend row yet
     # (e.g. LinkedIn, Bing before sync scripts run), add a spend=0 stub row
     # so the MQL/SQL shows up in the Overview immediately.
-    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing", "Capterra", "Meta awareness"}
+    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "PMax", "Bing"}
     covered = {(r["month"], r["channel"]) for r in all_rows}
     for month_key, ch_data in mql_sql_by_channel.items():
         for channel, ms in ch_data.items():
