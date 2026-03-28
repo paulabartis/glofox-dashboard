@@ -1042,7 +1042,7 @@ def compute_adgroup_optimizations(adgroup_data: list[dict]) -> list[dict]:
 # ── Channel view (CMO multi-channel overview) ─────────────────────────────────
 
 _CHANNEL_ORDER = [
-    "Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing",
+    "Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing", "Capterra",
     "Meta awareness", "YouTube pre-roll", "Programmatic display", "Podcast sponsorship",
 ]
 
@@ -1123,6 +1123,8 @@ def parse_channel(name: str) -> str:
         return "LinkedIn Sponsored"
     if provider in ("BING", "MICROSOFT") or "BING" in parts or "MICROSOFT" in parts:
         return "Bing"
+    if provider in ("CAPTERRA",) or "CAPTERRA" in parts:
+        return "Capterra"
     if provider in ("FACEBOOK", "INSTAGRAM", "META", "FB") or "FB" in parts or "META" in parts:
         return "Meta awareness"
     if provider in ("YOUTUBE",) or "YOUTUBE" in parts or "YT" in parts:
@@ -1347,6 +1349,7 @@ def build_channel_view(
         "PMax":               {"mql_sql_lo": 0.22, "mql_sql_hi": 0.30},
         "Demand Gen":         {"mql_sql_lo": 0.18, "mql_sql_hi": 0.26},
         "Bing":               {"mql_sql_lo": 0.28, "mql_sql_hi": 0.35},
+        "Capterra":           {"mql_sql_lo": 0.15, "mql_sql_hi": 0.25},
     }
 
     mql_sql_by_channel = compute_channel_mql_sql(campaigns_data)
@@ -1363,7 +1366,7 @@ def build_channel_view(
     # For any channel with CampaignsData MQL/SQL but no spend row yet
     # (e.g. LinkedIn, Bing before sync scripts run), add a spend=0 stub row
     # so the MQL/SQL shows up in the Overview immediately.
-    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing"}
+    _SQL_CHANNELS = {"Google Search", "LinkedIn Sponsored", "PMax", "Demand Gen", "Bing", "Capterra"}
     covered = {(r["month"], r["channel"]) for r in all_rows}
     for month_key, ch_data in mql_sql_by_channel.items():
         for channel, ms in ch_data.items():
