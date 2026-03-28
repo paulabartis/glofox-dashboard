@@ -1039,6 +1039,349 @@ def compute_adgroup_optimizations(adgroup_data: list[dict]) -> list[dict]:
     return results
 
 
+# ── Channel view (CMO multi-channel overview) ─────────────────────────────────
+
+_CHANNEL_ORDER = [
+    "Google Search", "LinkedIn Sponsored", "Retargeting", "Bing",
+    "Meta awareness", "YouTube pre-roll", "Programmatic display", "Podcast sponsorship",
+]
+
+
+def classify_google_channel(name: str) -> tuple:
+    """Classify a Google Ads readable campaign name → (channel_label, channel_type)."""
+    n = name.upper()
+    if "RETARGET" in n or "REMARKETING" in n:
+        return ("Retargeting", "sql")
+    if "YOUTUBE" in n or "VIDEO" in n:
+        return ("YouTube pre-roll", "awareness")
+    if "DISPLAY" in n or "BANNER" in n:
+        return ("Programmatic display", "awareness")
+    if "DEMAND GEN" in n or "DEMANDGEN" in n:
+        return ("Retargeting", "sql")
+    if "PMAX" in n or "PERFORMANCE MAX" in n or "PROSPECT" in n:
+        return ("Retargeting", "sql")
+    tokens = set(n.split())
+    if {"DG", "DIS"} & tokens:
+        return ("Retargeting", "sql")
+    return ("Google Search", "sql")
+
+
+def derive_gads_channel_rows(gads_data: list) -> list:
+    """
+    Aggregate GadsData by (month, channel) using classify_google_channel().
+    Returns channel rows in the same format as load_channel_summary(), so they
+    can be merged with ChannelSummary rows for non-Google channels.
+    No sheet tab required — Google data is always available via GadsData.
+    """
+    agg: dict = {}
+    for row in gads_data:
+        yr = row.get("year", 0)
+        mo = row.get("month", 0)
+        if yr == 0 or mo == 0:
+            continue
+        channel, ch_type = classify_google_channel(row.get("campaign_name", ""))
+        month_key = f"{yr}-{mo:02d}"
+        key = (month_key, channel)
+        if key not in agg:
+            agg[key] = {
+                "month": month_key, "channel": channel, "channel_type": ch_type,
+                "source": "gads", "budget": 0.0,
+                "spend": 0.0, "impressions": 0, "clicks": 0,
+                "reach": 0, "freq": 0.0, "vcr": None,
+                "leads": 0, "cpl": 0.0, "brand_lift": None, "assisted_conv": 0,
+            }
+        agg[key]["spend"]       += row.get("cost", 0.0)
+        agg[key]["impressions"] += row.get("impressions", 0)
+        agg[key]["clicks"]      += row.get("clicks", 0)
+
+    result = []
+    for v in sorted(agg.values(), key=lambda r: (r["month"], r["channel"])):
+        imp = v["impressions"]
+        clk = v["clicks"]
+        sp  = round(v["spend"], 2)
+        result.append({
+            **v,
+            "spend": sp,
+            "cpm": round(sp / imp * 1000, 2) if imp > 0 else 0.0,
+            "ctr": round(clk / imp, 4)        if imp > 0 else 0.0,
+            "cpc": round(sp / clk, 2)         if clk > 0 else 0.0,
+        })
+    return result
+
+
+def parse_channel(name: str) -> str:
+    """
+    Map a Looker-style campaign name to its CMO-view channel label.
+    Convention: SEGMENT_Direction_{Provider}_PPC_{ChannelType}_{CampaignType}_{Region}_{Date}
+    """
+    parts = name.upper().split("_")
+    if "LINKEDIN" in parts:
+        return "LinkedIn Sponsored"
+    if "BING" in parts or "MICROSOFT" in parts:
+        return "Bing"
+    if "FB" in parts or "META" in parts or "FACEBOOK" in parts:
+        return "Meta awareness"
+    if "YOUTUBE" in parts or "YT" in parts:
+        return "YouTube pre-roll"
+    if "PODCAST" in parts:
+        return "Podcast sponsorship"
+    # Google campaigns — distinguish by channel type
+    if "DIS" in parts or "DISPLAY" in parts:
+        return "Programmatic display"
+    if "DG" in parts or "SM" in parts:
+        return "Retargeting"
+    # Default: Google Search SEM
+    return "Google Search"
+
+
+def load_channel_summary(service) -> list[dict]:
+    """
+    ChannelSummary tab — platform metrics per (month, channel).
+    Columns: Month | Channel | ChannelType | Source | Budget | Spend |
+             Impressions | CPM | Clicks | CTR | CPC | Reach | Freq | VCR |
+             Leads | CPL | BrandLift | AssistedConv
+    Returns empty list gracefully if tab doesn't exist yet.
+    """
+    try:
+        rows = read_tab(service, "ChannelSummary")
+    except Exception:
+        return []
+    result = []
+    for row in rows[1:]:   # skip header
+        if len(row) < 4:
+            continue
+        month   = str(row[0]).strip()
+        channel = str(row[1]).strip()
+        if not month or not channel:
+            continue
+        result.append({
+            "month":        month,
+            "channel":      channel,
+            "channel_type": str(row[2]).strip() if len(row) > 2 else "",
+            "source":       str(row[3]).strip() if len(row) > 3 else "",
+            "budget":       safe_float(row[4])  if len(row) > 4 and row[4] else 0.0,
+            "spend":        safe_float(row[5])  if len(row) > 5 else 0.0,
+            "impressions":  safe_int(row[6])    if len(row) > 6 else 0,
+            "cpm":          safe_float(row[7])  if len(row) > 7 and row[7] else 0.0,
+            "clicks":       safe_int(row[8])    if len(row) > 8 else 0,
+            "ctr":          safe_float(row[9])  if len(row) > 9 and row[9] else 0.0,
+            "cpc":          safe_float(row[10]) if len(row) > 10 and row[10] else 0.0,
+            "reach":        safe_int(row[11])   if len(row) > 11 and row[11] else 0,
+            "freq":         safe_float(row[12]) if len(row) > 12 and row[12] else 0.0,
+            "vcr":          safe_float(row[13]) if len(row) > 13 and row[13] else None,
+            "leads":        safe_int(row[14])   if len(row) > 14 and row[14] else 0,
+            "cpl":          safe_float(row[15]) if len(row) > 15 and row[15] else 0.0,
+            "brand_lift":   safe_float(row[16]) if len(row) > 16 and row[16] else None,
+            "assisted_conv": safe_int(row[17])  if len(row) > 17 and row[17] else 0,
+        })
+    return result
+
+
+def load_weekly_channel_sql(service) -> list[dict]:
+    """
+    WeeklyChannelSQL tab — weekly SQL by channel (pasted from Salesforce).
+    Columns: Week (YYYY-MM-DD, Sunday) | Channel | SQLs
+    Returns empty list gracefully if tab doesn't exist yet.
+    """
+    try:
+        rows = read_tab(service, "WeeklyChannelSQL")
+    except Exception:
+        return []
+    result = []
+    for row in rows[1:]:   # skip header
+        if len(row) < 3:
+            continue
+        week    = str(row[0]).strip()
+        channel = str(row[1]).strip()
+        sqls    = safe_int(row[2])
+        if week and channel:
+            result.append({"week": week, "channel": channel, "sqls": sqls})
+    return result
+
+
+def compute_channel_mql_sql(campaigns_data: list[dict]) -> dict:
+    """
+    Group CampaignsData by (month_key, channel) using parse_channel().
+    MQL/SQL always sourced from Salesforce (CampaignsData), not platform data.
+    Returns {month_key: {channel: {"mql": N, "sql": N}}}.
+    """
+    result: dict[str, dict] = {}
+    for row in campaigns_data:
+        month_key = f"{row['year']}-{row['month']:02d}"
+        channel   = parse_channel(row["name"])
+        result.setdefault(month_key, {}).setdefault(channel, {"mql": 0, "sql": 0})
+        result[month_key][channel]["mql"] += row["mql"]
+        result[month_key][channel]["sql"] += row["sql"]
+    return result
+
+
+def generate_channel_signals(
+    channel_rows: list[dict],
+    month: str,
+    mql_sql_by_channel: dict,
+    cost_sql_goal: float = 3200.0,
+) -> list[str]:
+    """
+    Generate 3–5 data-driven signal bullets for the given month.
+    Rules: cost/SQL vs goal, budget pacing, brand lift comparison,
+           MQL→SQL by SQL channel vs benchmark, awareness % of budget.
+    """
+    rows = [r for r in channel_rows if r["month"] == month]
+    if not rows:
+        return []
+
+    month_mql_sql = mql_sql_by_channel.get(month, {})
+    signals: list[tuple[int, str]] = []   # (priority, text)
+
+    sql_rows       = [r for r in rows if r.get("channel_type") == "sql"]
+    awareness_rows = [r for r in rows if r.get("channel_type") == "awareness"]
+
+    sql_spend    = sum(r["spend"] for r in sql_rows)
+    total_spend  = sum(r["spend"] for r in rows)
+    total_sql    = sum(month_mql_sql.get(r["channel"], {}).get("sql", 0) for r in sql_rows)
+
+    # ── 1. Cost/SQL vs goal ─────────────────────────────────────────────────
+    if total_sql > 0 and sql_spend > 0:
+        blended = sql_spend / total_sql
+        pct_diff = (blended - cost_sql_goal) / cost_sql_goal
+        if blended < cost_sql_goal * 0.9:
+            signals.append((2,
+                f"Cost/SQL ${blended:,.0f} is {abs(pct_diff)*100:.0f}% below ${cost_sql_goal:,.0f} goal "
+                f"— efficiency is strong. Scale budget on top SQL channels to capture more demand."
+            ))
+        elif blended > cost_sql_goal * 1.1:
+            delta = blended - cost_sql_goal
+            signals.append((1,
+                f"Cost/SQL ${blended:,.0f} is ${delta:,.0f} above ${cost_sql_goal:,.0f} goal "
+                f"— review highest-CPA ad groups and pause underperformers."
+            ))
+
+    # ── 2. Budget pacing ─────────────────────────────────────────────────────
+    underpacing = [r for r in rows if r.get("budget", 0) > 0 and r["spend"] / r["budget"] < 0.85]
+    if underpacing:
+        names = ", ".join(r["channel"] for r in underpacing[:2])
+        signals.append((2,
+            f"Budget underdelivery: {names} pacing below 85% — "
+            "check campaign status, bid floors, and audience restrictions."
+        ))
+
+    overpacing = [r for r in rows if r.get("budget", 0) > 0 and r["spend"] / r["budget"] > 1.05]
+    if overpacing:
+        names = ", ".join(r["channel"] for r in overpacing[:2])
+        signals.append((2,
+            f"Overspend: {names} pacing above 105% — review daily caps to avoid billing surprises."
+        ))
+
+    # ── 3. Brand lift comparison (awareness channels) ───────────────────────
+    with_lift = [r for r in awareness_rows if r.get("brand_lift") is not None]
+    if len(with_lift) >= 2:
+        best  = max(with_lift, key=lambda r: r["brand_lift"])
+        worst = min(with_lift, key=lambda r: r["brand_lift"])
+        if best["brand_lift"] > 0:
+            signals.append((3,
+                f"{best['channel']} brand lift +{best['brand_lift']*100:.1f}% outperforming "
+                f"{worst['channel']} (+{worst['brand_lift']*100:.1f}%). "
+                f"Consider shifting awareness budget toward {best['channel']}."
+            ))
+
+    # ── 4. MQL→SQL by SQL channel vs benchmark ──────────────────────────────
+    benchmarks = {
+        "Google Search":      (0.28, 0.35),
+        "LinkedIn Sponsored": (0.20, 0.28),
+        "Retargeting":        (0.25, 0.32),
+        "Bing":               (0.28, 0.35),
+    }
+    for ch, (lo, hi) in benchmarks.items():
+        ch_data = month_mql_sql.get(ch, {})
+        mql = ch_data.get("mql", 0)
+        sql = ch_data.get("sql", 0)
+        if mql >= 5:
+            rate = sql / mql
+            if rate < lo:
+                missed = round(mql * lo - sql)
+                signals.append((1,
+                    f"{ch} MQL→SQL {rate*100:.0f}% below {lo*100:.0f}% benchmark — "
+                    f"~{missed} missed SQLs. Review ICP fit and SDR follow-up SLA."
+                ))
+            break  # flag only the most impactful channel
+
+    # ── 5. Awareness % of budget ─────────────────────────────────────────────
+    if total_spend > 0 and awareness_rows:
+        awareness_spend = sum(r["spend"] for r in awareness_rows)
+        aw_pct = awareness_spend / total_spend
+        if aw_pct > 0.40:
+            signals.append((3,
+                f"Awareness channels consuming {aw_pct*100:.0f}% of total budget "
+                f"— benchmark 25–35% for growth stage. Consider rebalancing toward SQL channels."
+            ))
+
+    signals.sort(key=lambda x: x[0])
+    return [text for _, text in signals[:5]]
+
+
+def build_channel_view(
+    gads_data: list,
+    channel_summary: list,
+    campaigns_data: list,
+    weekly_sql: list,
+) -> dict:
+    """
+    Build the channel_view payload attached to dashboard JSON.
+    Google channel rows are derived directly from GadsData (always available).
+    Non-Google channels (Meta, LinkedIn, Bing, Podcast) come from ChannelSummary
+    tab when those sync scripts are run. MQL/SQL always from CampaignsData.
+    """
+    COST_SQL_GOAL = 3200.0
+    BENCHMARKS = {
+        "Google Search":      {"mql_sql_lo": 0.28, "mql_sql_hi": 0.35},
+        "LinkedIn Sponsored": {"mql_sql_lo": 0.20, "mql_sql_hi": 0.28},
+        "Retargeting":        {"mql_sql_lo": 0.25, "mql_sql_hi": 0.32},
+        "Bing":               {"mql_sql_lo": 0.28, "mql_sql_hi": 0.35},
+    }
+
+    mql_sql_by_channel = compute_channel_mql_sql(campaigns_data)
+
+    # Google channels derived from GadsData (no sheet tab needed)
+    gads_channel_rows = derive_gads_channel_rows(gads_data)
+
+    # Non-Google channels from ChannelSummary (Meta, LinkedIn, Bing, Podcast)
+    non_gads_rows = [r for r in channel_summary if r.get("source", "").lower() != "gads"]
+
+    # Merged: Google from GadsData, everything else from ChannelSummary
+    all_rows = gads_channel_rows + non_gads_rows
+
+    # Attach MQL/SQL to channel rows
+    enriched = []
+    for r in all_rows:
+        ch_ms = mql_sql_by_channel.get(r["month"], {}).get(r["channel"], {})
+        enriched.append({**r, "mql": ch_ms.get("mql", 0), "sql": ch_ms.get("sql", 0)})
+
+    # Sort by channel order
+    def _ch_order(r: dict) -> int:
+        try:
+            return _CHANNEL_ORDER.index(r["channel"])
+        except ValueError:
+            return 99
+
+    enriched.sort(key=lambda r: (r["month"], _ch_order(r)))
+
+    months = sorted(set(r["month"] for r in enriched))
+
+    signals_by_month = {
+        mo: generate_channel_signals(channel_summary, mo, mql_sql_by_channel, COST_SQL_GOAL)
+        for mo in months
+    }
+
+    return {
+        "channel_rows":      enriched,
+        "weekly_sql":        weekly_sql,
+        "signals_by_month":  signals_by_month,
+        "benchmarks":        BENCHMARKS,
+        "cost_sql_goal":     COST_SQL_GOAL,
+        "months":            months,
+    }
+
+
 # ── HTML generation ───────────────────────────────────────────────────────────
 
 def render_html(template_path: str, data: dict) -> str:
@@ -1076,6 +1419,8 @@ def main():
     is_weekly = load_is_weekly(service)
     change_events = load_change_events(service)
     campaign_ids_map = load_campaign_ids(service)
+    channel_summary = load_channel_summary(service)
+    weekly_channel_sql = load_weekly_channel_sql(service)
     print(f"  GadsData: {len(gads_data)} rows")
     print(f"  CampaignsData (paid PPC): {len(campaigns_data)} rows")
     print(f"  MonthlySummary: {len(monthly_summary)} periods")
@@ -1083,12 +1428,18 @@ def main():
     print(f"  SearchTermsData: {len(search_terms)} rows")
     print(f"  ImpShareWeekly: {len(is_weekly)} weeks")
     print(f"  ChangeEvents: {len(change_events)} events")
+    print(f"  ChannelSummary: {len(channel_summary)} rows")
+    print(f"  WeeklyChannelSQL: {len(weekly_channel_sql)} rows")
 
     print("[3/5] Joining and processing data...")
     campaign_rows = build_campaign_rows(gads_data, campaigns_data)
     print(f"  Merged campaign rows: {len(campaign_rows)}")
 
     print("[4/5] Building dashboard payload...")
+    channel_view = build_channel_view(gads_data, channel_summary, campaigns_data, weekly_channel_sql)
+    print(f"  ChannelView: {len(channel_view['channel_rows'])} rows, "
+          f"{len(channel_view['months'])} months")
+
     optimizations = compute_optimizations(campaign_rows, adgroup_data, campaign_ids_map)
     high   = sum(1 for o in optimizations if o["severity"] == "high")
     medium = sum(1 for o in optimizations if o["severity"] == "medium")
@@ -1111,6 +1462,7 @@ def main():
         "ag_optimizations": ag_optimizations,
         "is_weekly":        is_weekly,
         "change_events":    change_events,
+        "channel_view":     channel_view,
     }
 
     print("[5/5] Rendering HTML...")

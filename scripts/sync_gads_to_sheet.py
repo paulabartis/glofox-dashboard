@@ -42,8 +42,15 @@ ADGROUP_TAB = "AdGroupData"
 IS_TAB = "ImpShareWeekly"
 SEARCH_TERMS_TAB = "SearchTermsData"
 CAMPAIGN_IDS_TAB = "CampaignIds"
+CHANNEL_SUMMARY_TAB = "ChannelSummary"
 GLOFOX_CUSTOMER_ID = "6129012053"
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+CHANNEL_SUMMARY_HEADERS = [
+    "Month", "Channel", "ChannelType", "Source", "Budget", "Spend",
+    "Impressions", "CPM", "Clicks", "CTR", "CPC", "Reach", "Freq", "VCR",
+    "Leads", "CPL", "BrandLift", "AssistedConv",
+]
 
 
 # ── Auth helpers ─────────────────────────────────────────────────────────────
@@ -620,6 +627,106 @@ def write_campaign_ids_to_sheet(service, rows: list[dict]) -> None:
     print(f"  Written {len(rows)} rows to '{CAMPAIGN_IDS_TAB}' tab.")
 
 
+# ── Channel Summary (ChannelSummary tab) ─────────────────────────────────────
+
+def classify_google_channel(name: str) -> tuple[str, str]:
+    """
+    Classify a Google Ads campaign name to its CMO-view channel and type.
+    Returns (channel_label, channel_type) where type is 'sql' or 'awareness'.
+    """
+    n = name.upper()
+    if "RETARGET" in n or "REMARKETING" in n:
+        return ("Retargeting", "sql")
+    if "YOUTUBE" in n or "VIDEO" in n:
+        return ("YouTube pre-roll", "awareness")
+    if "DISPLAY" in n or "BANNER" in n:
+        return ("Programmatic display", "awareness")
+    if "DEMAND GEN" in n or "DEMANDGEN" in n:
+        return ("Retargeting", "sql")
+    if "PMAX" in n or "PERFORMANCE MAX" in n or "PROSPECT" in n:
+        return ("Retargeting", "sql")
+    # DG/DIS type markers in tokenised names
+    tokens = set(n.split())
+    if {"DG", "DIS"} & tokens:
+        return ("Retargeting", "sql")
+    return ("Google Search", "sql")
+
+
+def sync_channel_summary_gads(service, gads_monthly_rows: list[dict]) -> None:
+    """
+    Aggregate Google Ads monthly rows by (month, channel) and upsert into
+    the ChannelSummary tab. Only rows with Source='gads' are replaced;
+    rows from other sources (manual, meta, linkedin, bing) are preserved.
+    """
+    # Aggregate by (month_key, channel)
+    agg: dict[tuple, dict] = {}
+    for row in gads_monthly_rows:
+        yr = row["year"]
+        mo = row["month"]
+        if yr == 0 or mo == 0:
+            continue
+        channel, ch_type = classify_google_channel(row["campaign_name"])
+        month_key = f"{yr}-{mo:02d}"
+        key = (month_key, channel)
+        if key not in agg:
+            agg[key] = {
+                "month": month_key, "channel": channel, "channel_type": ch_type,
+                "source": "gads", "budget": "", "spend": 0.0,
+                "impressions": 0, "clicks": 0,
+            }
+        agg[key]["spend"]       += row["cost"]
+        agg[key]["impressions"] += row["impressions"]
+        agg[key]["clicks"]      += row["clicks"]
+
+    # Compute derived metrics
+    new_gads: list[list] = []
+    for v in sorted(agg.values(), key=lambda r: (r["month"], r["channel"])):
+        imp  = v["impressions"]
+        clk  = v["clicks"]
+        sp   = round(v["spend"], 2)
+        cpm  = round(sp / imp * 1000, 2) if imp > 0 else ""
+        ctr  = round(clk / imp, 4)       if imp > 0 else ""
+        cpc  = round(sp / clk, 2)        if clk > 0 else ""
+        new_gads.append([
+            v["month"], v["channel"], v["channel_type"], v["source"],
+            v["budget"], sp, imp, cpm, clk, ctr, cpc,
+            "", "", "", "", "", "", "",  # reach, freq, vcr, leads, cpl, brand_lift, assisted_conv
+        ])
+
+    ensure_tab_exists(service, CHANNEL_SUMMARY_TAB)
+
+    # Read existing rows — preserve non-gads rows
+    try:
+        existing = service.spreadsheets().values().get(
+            spreadsheetId=SHEET_ID,
+            range=f"{CHANNEL_SUMMARY_TAB}!A:R",
+        ).execute().get("values", [])
+    except Exception:
+        existing = []
+
+    preserved = []
+    for row in existing[1:]:  # skip header
+        source_col = row[3].strip().lower() if len(row) > 3 else ""
+        if source_col != "gads":
+            preserved.append(row)
+
+    all_rows = preserved + new_gads
+    all_rows.sort(key=lambda r: (r[0], r[1]))  # sort by month, channel
+
+    service.spreadsheets().values().clear(
+        spreadsheetId=SHEET_ID,
+        range=f"{CHANNEL_SUMMARY_TAB}!A:R",
+    ).execute()
+    service.spreadsheets().values().update(
+        spreadsheetId=SHEET_ID,
+        range=f"{CHANNEL_SUMMARY_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": [CHANNEL_SUMMARY_HEADERS] + all_rows},
+    ).execute()
+    print(f"  ChannelSummary: wrote {len(new_gads)} Google Ads rows "
+          f"({len(preserved)} other-source rows preserved).")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -660,7 +767,7 @@ def main():
     change_rows = fetch_change_events(gads_client, days=14)
     print(f"  Retrieved {len(change_rows)} change events.")
 
-    print(f"[6/7] Writing to Google Sheet...")
+    print(f"[6/8] Writing to Google Sheet...")
     sheets_service = get_sheets_service()
     write_to_sheet(sheets_service, rows)
     write_adgroup_to_sheet(sheets_service, ag_rows)
@@ -673,7 +780,10 @@ def main():
     print(f"  Retrieved {len(cid_rows)} campaigns.")
     write_campaign_ids_to_sheet(sheets_service, cid_rows)
 
-    print("\nDone! GadsData, AdGroupData, SearchTermsData, ImpShareWeekly, ChangeEvents, and CampaignIds tabs are up to date.")
+    print(f"\n[8/8] Syncing Google Ads rows to ChannelSummary tab...")
+    sync_channel_summary_gads(sheets_service, rows)
+
+    print("\nDone! GadsData, AdGroupData, SearchTermsData, ImpShareWeekly, ChangeEvents, CampaignIds, and ChannelSummary tabs are up to date.")
 
 
 if __name__ == "__main__":

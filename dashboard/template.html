@@ -336,6 +336,140 @@
   }
   .opt-ok-toggle:hover { background:#EFF6FF; border-color:#93C5FD; }
   .opt-card[data-sev="ok"] { opacity:.85; }
+
+  /* ── Channel Overview (CMO view) ── */
+  :root {
+    --ch-google:   #4285F4;
+    --ch-linkedin: #0A66C2;
+    --ch-retarget: #10B981;
+    --ch-bing:     #00B4D8;
+    --ch-meta:     #1877F2;
+    --ch-youtube:  #FF0000;
+    --ch-display:  #F59E0B;
+    --ch-podcast:  #8B5CF6;
+  }
+  .ch-month-bar {
+    display:flex; align-items:center; gap:6px;
+    margin-bottom:20px; flex-wrap:wrap;
+  }
+  .ch-month-btn {
+    padding:5px 13px; border:1.5px solid #CBD5E1; border-radius:6px;
+    background:#fff; color:#475569; font-size:13px; cursor:pointer; transition:all .15s;
+  }
+  .ch-month-btn:hover { border-color:#3B82F6; color:#3B82F6; }
+  .ch-month-btn.active { background:#3B82F6; border-color:#3B82F6; color:#fff; font-weight:600; }
+  /* KPI cards */
+  .ch-kpi-grid {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:12px; margin-bottom:20px;
+  }
+  .ch-kpi-card {
+    background:#fff; border-radius:10px; padding:16px 18px;
+    border:1px solid #E2E8F0; box-shadow:0 1px 3px rgba(0,0,0,.04);
+  }
+  .ch-kpi-label { font-size:11px; color:#64748B; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+  .ch-kpi-value { font-size:22px; font-weight:700; color:#1E293B; margin-top:4px; line-height:1.2; }
+  .ch-kpi-sub   { font-size:12px; color:#94A3B8; margin-top:3px; }
+  .ch-kpi-delta-good { color:#16A34A; font-weight:600; }
+  .ch-kpi-delta-bad  { color:#DC2626; font-weight:600; }
+  /* Channel allocation bar */
+  .ch-alloc-wrap {
+    background:#fff; border-radius:10px; border:1px solid #E2E8F0;
+    padding:16px 20px; margin-bottom:20px;
+  }
+  .ch-alloc-bar {
+    height:12px; border-radius:6px; overflow:hidden; display:flex; margin:10px 0 8px;
+  }
+  .ch-alloc-sql { background:#0D9488; }
+  .ch-alloc-aw  { background:#D97706; }
+  .ch-alloc-legend { display:flex; gap:20px; font-size:12px; color:#475569; }
+  .ch-alloc-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
+  /* SQL channels section */
+  .ch-section-sql {
+    background:#fff; border-radius:10px; border:1px solid #CCFBF1;
+    margin-bottom:20px; overflow:hidden;
+  }
+  .ch-section-sql-head {
+    background:#F0FDFA; padding:14px 20px; display:flex; align-items:center;
+    gap:10px; flex-wrap:wrap; border-bottom:1px solid #CCFBF1;
+  }
+  .ch-section-awareness {
+    background:#fff; border-radius:10px; border:1px solid #FED7AA;
+    margin-bottom:20px; overflow:hidden;
+  }
+  .ch-section-awareness-head {
+    background:#FFFBEB; padding:14px 20px; display:flex; align-items:center;
+    gap:10px; flex-wrap:wrap; border-bottom:1px solid #FED7AA;
+  }
+  .ch-section-title { font-size:15px; font-weight:700; color:#1E293B; }
+  .ch-section-tag {
+    font-size:11px; font-weight:600; padding:3px 8px; border-radius:4px;
+  }
+  .tag-sql { background:#CCFBF1; color:#0F766E; }
+  .tag-aw  { background:#FEF3C7; color:#B45309; }
+  .ch-section-alloc { font-size:12px; color:#64748B; margin-left:auto; }
+  /* Channel tables */
+  .ch-table-wrap { overflow-x:auto; }
+  .ch-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .ch-table thead th {
+    padding:9px 14px; text-align:right; font-size:11px; font-weight:700;
+    color:#64748B; text-transform:uppercase; letter-spacing:.4px;
+    border-bottom:1px solid #E2E8F0; background:#F8FAFC; white-space:nowrap;
+  }
+  .ch-table thead th:first-child { text-align:left; }
+  .ch-table tbody tr { border-bottom:1px solid #F1F5F9; }
+  .ch-table tbody tr:last-child { border-bottom:none; }
+  .ch-table tbody tr:hover { background:#F8FAFC; }
+  .ch-table tbody td { padding:10px 14px; white-space:nowrap; text-align:right; color:#475569; }
+  .ch-table tbody td:first-child { text-align:left; font-weight:600; color:#1E293B; }
+  .ch-table tfoot td {
+    padding:9px 14px; font-weight:700; color:#1E293B; font-size:13px;
+    background:#F8FAFC; border-top:2px solid #E2E8F0; text-align:right;
+  }
+  .ch-table tfoot td:first-child { text-align:left; }
+  .ch-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+  /* SQL funnel */
+  .ch-funnel {
+    padding:16px 20px; border-top:1px solid #E2E8F0;
+  }
+  .ch-funnel-title { font-size:12px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.4px; margin-bottom:10px; }
+  .ch-funnel-row { display:flex; align-items:center; gap:10px; padding:5px 0; }
+  .ch-funnel-label { width:110px; font-size:12px; color:#475569; flex-shrink:0; }
+  .ch-funnel-bar-wrap { flex:1; background:#F1F5F9; border-radius:4px; height:14px; }
+  .ch-funnel-bar { height:100%; border-radius:4px; background:#0D9488; }
+  .ch-funnel-val { width:80px; font-size:12px; font-weight:600; text-align:right; flex-shrink:0; color:#1E293B; }
+  .ch-funnel-rate { width:70px; font-size:11px; color:#64748B; text-align:right; flex-shrink:0; }
+  .ch-funnel-note { font-size:11px; color:#94A3B8; margin-top:8px; font-style:italic; }
+  /* Awareness summary mini-cards */
+  .ch-aw-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; padding:16px 20px; border-top:1px solid #E2E8F0; }
+  .ch-aw-card { text-align:center; }
+  .ch-aw-card-val { font-size:20px; font-weight:700; color:#1E293B; }
+  .ch-aw-card-label { font-size:11px; color:#64748B; margin-top:3px; }
+  .ch-aw-card-sub { font-size:11px; color:#94A3B8; margin-top:2px; }
+  /* Charts row */
+  .ch-charts-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+  @media (max-width:700px) { .ch-charts-row { grid-template-columns:1fr; } }
+  .ch-chart-card { background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:18px 20px; }
+  .ch-chart-title { font-size:13px; font-weight:700; color:#1E293B; margin-bottom:14px; }
+  /* Budget pacing */
+  .ch-pacing-section { background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:18px 20px; margin-bottom:20px; }
+  .ch-pacing-title { font-size:13px; font-weight:700; color:#1E293B; margin-bottom:14px; }
+  .ch-pacing-row { display:flex; align-items:center; gap:10px; padding:6px 0; }
+  .ch-pacing-label { width:170px; font-size:13px; color:#475569; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ch-pacing-bar-wrap { flex:1; background:#F1F5F9; border-radius:4px; height:10px; }
+  .ch-pacing-bar { height:100%; border-radius:4px; }
+  .pacing-good   { background:#16A34A; }
+  .pacing-warn   { background:#D97706; }
+  .pacing-bad    { background:#DC2626; }
+  .pacing-over   { background:#7C3AED; }
+  .ch-pacing-pct { width:42px; font-size:12px; font-weight:600; text-align:right; flex-shrink:0; }
+  /* Signals */
+  .ch-signals { background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:18px 20px; margin-bottom:20px; }
+  .ch-signals-title { font-size:13px; font-weight:700; color:#1E293B; margin-bottom:14px; }
+  .ch-signal-item { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #F1F5F9; font-size:13px; color:#1E293B; line-height:1.5; }
+  .ch-signal-item:last-child { border-bottom:none; }
+  .ch-signal-num { width:20px; height:20px; border-radius:50%; background:#EFF6FF; color:#3B82F6; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+  .ch-empty { color:#94A3B8; font-size:13px; padding:20px 0; text-align:center; }
 </style>
 </head>
 <body>
@@ -378,85 +512,92 @@
     <button class="tab-btn" data-tab="searchterms">Search Terms</button>
   </div>
 
-  <!-- Overview tab -->
+  <!-- Overview tab (CMO multi-channel view) -->
   <div id="tab-overview">
 
+  <!-- Month selector -->
+  <div class="ch-month-bar" id="ch-month-bar"></div>
+
   <!-- KPI bar -->
-  <div class="kpi-grid" id="kpi-grid"></div>
+  <div class="ch-kpi-grid" id="ch-kpi-grid"></div>
 
-  <!-- Funnel by Campaign Type -->
-  <div class="section">
-    <div class="section-title">
-      Full Funnel by Campaign Type
-      <span class="badge">Google &amp; Bing PPC</span>
+  <!-- Channel allocation bar -->
+  <div class="ch-alloc-wrap" id="ch-alloc-wrap" style="display:none">
+    <div style="font-size:13px;font-weight:700;color:#1E293B;margin-bottom:4px;" id="ch-alloc-label"></div>
+    <div class="ch-alloc-bar" id="ch-alloc-bar"></div>
+    <div class="ch-alloc-legend" id="ch-alloc-legend"></div>
+  </div>
+
+  <!-- SQL-generating channels -->
+  <div class="ch-section-sql" id="ch-sql-section" style="display:none">
+    <div class="ch-section-sql-head">
+      <span class="ch-section-title">SQL-generating channels</span>
+      <span class="ch-section-tag tag-sql">Bottom-funnel · direct attribution</span>
+      <span class="ch-section-alloc" id="ch-sql-alloc"></span>
     </div>
-    <div class="table-wrap">
-      <table>
+    <div class="ch-table-wrap">
+      <table class="ch-table">
         <thead><tr>
-          <th>Campaign Type</th><th>Cost</th><th>MQL</th><th>SQL</th><th>MQL→SQL%</th>
+          <th>Channel</th><th>Spend</th><th>Impr.</th><th>Clicks</th>
+          <th>CTR</th><th>CPC</th><th>Leads</th><th>CPL</th>
+          <th>MQLs</th><th>MQL rate</th><th>SQLs</th><th>Cost/SQL</th>
         </tr></thead>
-        <tbody id="tbody-type"></tbody>
-        <tfoot id="tfoot-type"></tfoot>
+        <tbody id="ch-sql-tbody"></tbody>
+        <tfoot id="ch-sql-tfoot"></tfoot>
       </table>
     </div>
+    <!-- SQL funnel -->
+    <div class="ch-funnel" id="ch-funnel"></div>
   </div>
 
-  <!-- Funnel by Region -->
-  <div class="section">
-    <div class="section-title">
-      Full Funnel by Region
-      <span class="badge">NAM · EMEA · APAC</span>
+  <!-- Awareness & experimental channels -->
+  <div class="ch-section-awareness" id="ch-aw-section" style="display:none">
+    <div class="ch-section-awareness-head">
+      <span class="ch-section-title">Awareness &amp; experimental channels</span>
+      <span class="ch-section-tag tag-aw">Top-funnel · brand, reach, pipeline influence</span>
+      <span class="ch-section-alloc" id="ch-aw-alloc"></span>
     </div>
-    <div class="table-wrap">
-      <table>
+    <div class="ch-table-wrap">
+      <table class="ch-table">
         <thead><tr>
-          <th>Region</th><th>Cost</th><th>MQL</th><th>SQL</th><th>MQL→SQL%</th>
+          <th>Channel</th><th>Spend</th><th>Impressions</th><th>CPM</th>
+          <th>Reach</th><th>Freq.</th><th>VCR</th>
+          <th>Brand lift</th><th>Assisted conv.</th>
         </tr></thead>
-        <tbody id="tbody-region"></tbody>
-        <tfoot id="tfoot-region"></tfoot>
+        <tbody id="ch-aw-tbody"></tbody>
+        <tfoot id="ch-aw-tfoot"></tfoot>
       </table>
     </div>
+    <!-- Awareness summary cards -->
+    <div class="ch-aw-summary" id="ch-aw-summary"></div>
   </div>
 
-  <!-- Conversions by Region × Campaign Type -->
-  <div class="section">
-    <div class="section-title">
-      Conversions by Region &amp; Campaign Type
-      <span class="badge">MQL · SQL · Rate</span>
+  <!-- Charts row -->
+  <div class="ch-charts-row">
+    <div class="ch-chart-card">
+      <div class="ch-chart-title">Spend allocation by channel</div>
+      <canvas id="ch-chart-donut" height="180"></canvas>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr>
-          <th>Region</th><th>Campaign Type</th><th>Cost</th><th>MQL</th><th>SQL</th><th>MQL→SQL%</th>
-        </tr></thead>
-        <tbody id="tbody-region-type"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- MQL→SQL Conversion Chart -->
-  <div class="section">
-    <div class="section-title">
-      MQL→SQL Conversion Rate by Campaign
-      <span class="badge" style="background:#DCFCE7;color:#15803D;">Goal: 25%</span>
-    </div>
-    <div id="mql-chart"></div>
-  </div>
-
-  <!-- Paid Search vs Paid Other -->
-  <div class="section">
-    <div class="section-title">Paid Search vs. Paid Other — MQL:SQL Comparison</div>
-    <div class="compare-grid">
-      <div class="compare-card" id="card-search"></div>
-      <div class="compare-card" id="card-other"></div>
-    </div>
-    <div style="margin-top:16px; background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:20px;">
-      <canvas id="chart-compare" height="80"></canvas>
+    <div class="ch-chart-card">
+      <div class="ch-chart-title">Weekly SQL volume — SQL channels only</div>
+      <canvas id="ch-chart-weekly-sql" height="180"></canvas>
     </div>
   </div>
 
-  <!-- Trend Charts -->
-  <div class="section">
+  <!-- Budget pacing -->
+  <div class="ch-pacing-section" id="ch-pacing-section" style="display:none">
+    <div class="ch-pacing-title">Budget pacing — end of month projection</div>
+    <div id="ch-pacing-rows"></div>
+  </div>
+
+  <!-- Signals & recommended actions -->
+  <div class="ch-signals" id="ch-signals-section" style="display:none">
+    <div class="ch-signals-title">Signals &amp; recommended actions</div>
+    <div id="ch-signals-list"></div>
+  </div>
+
+  <!-- Trend Charts (kept for deeper analysis) -->
+  <div class="section" style="margin-top:8px">
     <div class="section-title">
       Monthly Spend Trend
       <span class="badge">Last 6 months · by campaign type</span>
@@ -478,7 +619,6 @@
     </div>
   </div>
 
-  <!-- Cost/MQL Trend -->
   <div class="section">
     <div class="section-title">
       Monthly Cost per MQL &amp; SQL
@@ -490,7 +630,6 @@
     </div>
   </div>
 
-  <!-- IS Weekly Chart -->
   <div class="section">
     <div class="section-title">
       Paid Search — Weekly Impression Share Trend
@@ -2150,24 +2289,433 @@ function renderMqlSqlChart(fc) {
 // ── Main render ───────────────────────────────────────────────────────────────
 let lastRange = { fromYM: 0, toYM: 0 };
 
+// ── Channel Overview (CMO view) ───────────────────────────────────────────────
+
+const CH_COLORS = {
+  'Google Search':      '#4285F4',
+  'LinkedIn Sponsored': '#0A66C2',
+  'Retargeting':        '#10B981',
+  'Bing':               '#00B4D8',
+  'Meta awareness':     '#1877F2',
+  'YouTube pre-roll':   '#FF0000',
+  'Programmatic display': '#F59E0B',
+  'Podcast sponsorship':  '#8B5CF6',
+};
+const CH_ORDER = Object.keys(CH_COLORS);
+
+let _chDonutChart = null;
+let _chWeeklySqlChart = null;
+let _chCurrentMonth = null;
+
+function chFmt(n, type) {
+  if (n === null || n === undefined || n === '') return '—';
+  if (type === 'currency') {
+    if (n >= 1000) return '$' + (n/1000).toFixed(1) + 'k';
+    return '$' + n.toFixed(0);
+  }
+  if (type === 'cpc')   return '$' + n.toFixed(2);
+  if (type === 'pct')   return (n * 100).toFixed(1) + '%';
+  if (type === 'pct1')  return (n * 100).toFixed(0) + '%';
+  if (type === 'num')   return n.toLocaleString();
+  if (type === 'x')     return n.toFixed(1) + '×';
+  return n;
+}
+
+function chMonthLabel(ym) {
+  // ym = "2026-02"
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const parts = ym.split('-');
+  return months[parseInt(parts[1]) - 1] + ' \'' + parts[0].slice(2);
+}
+
+function chDeltaHtml(val, invertColor) {
+  if (!val && val !== 0) return '';
+  const pos = val >= 0;
+  const cls = (pos !== Boolean(invertColor)) ? 'ch-kpi-delta-good' : 'ch-kpi-delta-bad';
+  const arrow = pos ? '↑' : '↓';
+  return ` <span class="${cls}">${arrow}${Math.abs(val).toLocaleString()}</span>`;
+}
+
+function buildChMonthBar(months) {
+  const bar = document.getElementById('ch-month-bar');
+  if (!bar) return;
+  bar.innerHTML = '<span class="bar-label">Month:</span>' +
+    months.map(m =>
+      `<button class="ch-month-btn${m === _chCurrentMonth ? ' active' : ''}" data-month="${m}">${chMonthLabel(m)}</button>`
+    ).join('');
+  bar.querySelectorAll('.ch-month-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _chCurrentMonth = btn.dataset.month;
+      renderChannelOverview(_chCurrentMonth);
+    });
+  });
+}
+
+function renderChannelOverview(month) {
+  const cv = D.channel_view;
+  if (!cv || !cv.channel_rows || cv.channel_rows.length === 0) {
+    document.getElementById('ch-kpi-grid').innerHTML =
+      '<div class="ch-empty">No channel data yet. Run sync scripts and add ChannelSummary tab to the sheet.</div>';
+    return;
+  }
+
+  const months = cv.months || [];
+  if (!months.length) return;
+
+  // Default to latest month if none selected
+  if (!month || !months.includes(month)) {
+    _chCurrentMonth = months[months.length - 1];
+  } else {
+    _chCurrentMonth = month;
+  }
+  const mo = _chCurrentMonth;
+  const moIdx = months.indexOf(mo);
+  const prevMo = moIdx > 0 ? months[moIdx - 1] : null;
+
+  // Build month selector
+  buildChMonthBar(months);
+
+  // Rows for selected month
+  const rows = cv.channel_rows.filter(r => r.month === mo);
+  const prevRows = prevMo ? cv.channel_rows.filter(r => r.month === prevMo) : [];
+
+  const sqlRows = rows.filter(r => r.channel_type === 'sql');
+  const awRows  = rows.filter(r => r.channel_type === 'awareness');
+
+  // ── KPI bar ───────────────────────────────────────────────────────────────
+  const totalSpend  = rows.reduce((s,r) => s + r.spend, 0);
+  const totalSQL    = rows.reduce((s,r) => s + (r.sql||0), 0);
+  const totalMQL    = rows.reduce((s,r) => s + (r.mql||0), 0);
+  const sqlSpend    = sqlRows.reduce((s,r) => s + r.spend, 0);
+  const blendedCostSQL = totalSQL > 0 ? sqlSpend / totalSQL : null;
+  const blendedCPL  = totalSQL > 0 ? sqlSpend / totalSQL : null; // placeholder
+  const totalLeads  = rows.reduce((s,r) => s + (r.leads||0), 0);
+  const blendedCPLVal = totalLeads > 0 ? sqlSpend / totalLeads : null;
+  const totalBudget = rows.reduce((s,r) => s + (r.budget||0), 0);
+  const pacingPct   = totalBudget > 0 ? totalSpend / totalBudget : null;
+
+  // Prev month deltas
+  const prevSpend   = prevRows.reduce((s,r) => s + r.spend, 0);
+  const prevSQL     = prevRows.reduce((s,r) => s + (r.sql||0), 0);
+  const prevCostSQL = prevSQL > 0 ? prevRows.filter(r=>r.channel_type==='sql').reduce((s,r)=>s+r.spend,0) / prevSQL : null;
+
+  const kpis = [
+    {
+      label: 'Total spend',
+      value: chFmt(totalSpend, 'currency'),
+      sub: totalBudget > 0
+        ? `Budget ${chFmt(totalBudget,'currency')} · ${chFmt(pacingPct,'pct')} paced`
+        : chMonthLabel(mo),
+      delta: prevSpend > 0 ? Math.round(totalSpend - prevSpend) : null,
+      invertDelta: true,
+    },
+    {
+      label: 'Total SQLs',
+      value: totalSQL,
+      sub: prevSQL > 0 ? `vs ${chMonthLabel(prevMo||'')} (${prevSQL})` : chMonthLabel(mo),
+      delta: prevSQL > 0 ? totalSQL - prevSQL : null,
+      invertDelta: false,
+    },
+    {
+      label: 'Blended cost / SQL',
+      value: blendedCostSQL !== null ? chFmt(blendedCostSQL, 'cpc') : '—',
+      sub: `Goal: ${chFmt(cv.cost_sql_goal, 'currency')}`,
+      delta: (blendedCostSQL && prevCostSQL) ? Math.round(blendedCostSQL - prevCostSQL) : null,
+      invertDelta: true,
+    },
+    {
+      label: 'Total MQLs',
+      value: totalMQL,
+      sub: totalMQL > 0 && totalSQL > 0 ? `${chFmt(totalSQL/totalMQL,'pct')} MQL→SQL` : chMonthLabel(mo),
+      delta: null,
+      invertDelta: false,
+    },
+    {
+      label: 'Blended CPL',
+      value: blendedCPLVal !== null ? chFmt(blendedCPLVal, 'cpc') : '—',
+      sub: `${totalLeads} total leads`,
+      delta: null,
+      invertDelta: false,
+    },
+  ];
+
+  const kpiGrid = document.getElementById('ch-kpi-grid');
+  kpiGrid.innerHTML = kpis.map(k => `
+    <div class="ch-kpi-card">
+      <div class="ch-kpi-label">${k.label}</div>
+      <div class="ch-kpi-value">${k.value}${k.delta !== null ? chDeltaHtml(k.delta, k.invertDelta) : ''}</div>
+      <div class="ch-kpi-sub">${k.sub}</div>
+    </div>
+  `).join('');
+
+  // ── Channel allocation bar ────────────────────────────────────────────────
+  const awSpend  = awRows.reduce((s,r) => s + r.spend, 0);
+  const sqlPct   = totalSpend > 0 ? sqlSpend / totalSpend : 0;
+  const awPct    = totalSpend > 0 ? awSpend / totalSpend : 0;
+  const allocWrap = document.getElementById('ch-alloc-wrap');
+  if (totalSpend > 0) {
+    allocWrap.style.display = '';
+    document.getElementById('ch-alloc-label').textContent =
+      `${chMonthLabel(mo)} · Fitness SMB vertical · All figures USD`;
+    document.getElementById('ch-alloc-bar').innerHTML = `
+      <div class="ch-alloc-sql" style="width:${sqlPct*100}%"></div>
+      <div class="ch-alloc-aw"  style="width:${awPct*100}%"></div>
+    `;
+    document.getElementById('ch-alloc-legend').innerHTML = `
+      <span><span class="ch-alloc-dot" style="background:#0D9488"></span>
+        ${chFmt(sqlPct,'pct')} SQL-generating (${chFmt(sqlSpend,'currency')})</span>
+      <span><span class="ch-alloc-dot" style="background:#D97706"></span>
+        ${chFmt(awPct,'pct')} Awareness &amp; experimental (${chFmt(awSpend,'currency')})</span>
+    `;
+  } else {
+    allocWrap.style.display = 'none';
+  }
+
+  // ── SQL channels section ──────────────────────────────────────────────────
+  const sqlSection = document.getElementById('ch-sql-section');
+  sqlSection.style.display = sqlRows.length ? '' : 'none';
+  if (sqlRows.length) {
+    document.getElementById('ch-sql-alloc').textContent =
+      `${chFmt(sqlSpend,'currency')} allocated · goal: cost/SQL ≤ ${chFmt(cv.cost_sql_goal,'currency')}`;
+
+    const sqlTotals = {
+      spend:       sqlRows.reduce((s,r)=>s+r.spend,0),
+      impressions: sqlRows.reduce((s,r)=>s+r.impressions,0),
+      clicks:      sqlRows.reduce((s,r)=>s+r.clicks,0),
+      leads:       sqlRows.reduce((s,r)=>s+(r.leads||0),0),
+      mql:         sqlRows.reduce((s,r)=>s+(r.mql||0),0),
+      sql:         sqlRows.reduce((s,r)=>s+(r.sql||0),0),
+    };
+
+    function sqlRow(r) {
+      const dot = `<span class="ch-dot" style="background:${CH_COLORS[r.channel]||'#94A3B8'}"></span>`;
+      const mqlRate = r.impressions > 0 && r.leads > 0 && r.mql > 0 ? r.mql / r.leads : null;
+      const costSql = r.sql > 0 ? r.spend / r.sql : null;
+      return `<tr>
+        <td>${dot}${r.channel}</td>
+        <td>${chFmt(r.spend,'currency')}</td>
+        <td>${r.impressions ? chFmt(r.impressions,'num') : '—'}</td>
+        <td>${r.clicks ? chFmt(r.clicks,'num') : '—'}</td>
+        <td>${r.ctr ? chFmt(r.ctr,'pct') : '—'}</td>
+        <td>${r.cpc ? chFmt(r.cpc,'cpc') : '—'}</td>
+        <td>${r.leads || '—'}</td>
+        <td>${r.cpl ? chFmt(r.cpl,'cpc') : '—'}</td>
+        <td>${r.mql || '—'}</td>
+        <td>${mqlRate !== null ? chFmt(mqlRate,'pct') : '—'}</td>
+        <td><strong>${r.sql || '—'}</strong></td>
+        <td>${costSql !== null ? chFmt(costSql,'cpc') : '—'}</td>
+      </tr>`;
+    }
+
+    document.getElementById('ch-sql-tbody').innerHTML = sqlRows.map(sqlRow).join('');
+
+    const totCostSql = sqlTotals.sql > 0 ? sqlTotals.spend / sqlTotals.sql : null;
+    const totMqlRate = sqlTotals.leads > 0 && sqlTotals.mql > 0 ? sqlTotals.mql / sqlTotals.leads : null;
+    document.getElementById('ch-sql-tfoot').innerHTML = `<tr class="tfoot-row">
+      <td>Total — SQL channels</td>
+      <td>${chFmt(sqlTotals.spend,'currency')}</td>
+      <td>${chFmt(sqlTotals.impressions,'num')}</td>
+      <td>${chFmt(sqlTotals.clicks,'num')}</td>
+      <td>${sqlTotals.impressions ? chFmt(sqlTotals.clicks/sqlTotals.impressions,'pct') : '—'}</td>
+      <td>${sqlTotals.clicks ? chFmt(sqlTotals.spend/sqlTotals.clicks,'cpc') : '—'}</td>
+      <td>${sqlTotals.leads}</td>
+      <td>${sqlTotals.leads ? chFmt(sqlTotals.spend/sqlTotals.leads,'cpc') : '—'}</td>
+      <td>${sqlTotals.mql}</td>
+      <td>${totMqlRate !== null ? chFmt(totMqlRate,'pct') : '—'}</td>
+      <td>${sqlTotals.sql}</td>
+      <td>${totCostSql !== null ? chFmt(totCostSql,'cpc') : '—'}</td>
+    </tr>`;
+
+    // Funnel
+    const ft = sqlTotals;
+    const funnelSteps = [
+      {label:'Impressions', val:ft.impressions, rate: null},
+      {label:'Clicks',      val:ft.clicks,      rate: ft.impressions ? ft.clicks/ft.impressions : null, rateSuffix:'CTR'},
+      {label:'Leads',       val:ft.leads,       rate: ft.clicks ? ft.leads/ft.clicks : null, rateSuffix:'CVR'},
+      {label:'MQLs',        val:ft.mql,         rate: ft.leads ? ft.mql/ft.leads : null, rateSuffix:'rate'},
+      {label:'SQLs',        val:ft.sql,         rate: ft.mql ? ft.sql/ft.mql : null, rateSuffix:'rate'},
+    ];
+    const maxVal = Math.max(...funnelSteps.map(s => s.val || 0));
+    const funnelHtml = `
+      <div class="ch-funnel-title">SQL channel funnel · cumulative ${chMonthLabel(mo)}</div>
+      ${funnelSteps.map(s => `
+        <div class="ch-funnel-row">
+          <div class="ch-funnel-label">${s.label}</div>
+          <div class="ch-funnel-bar-wrap">
+            <div class="ch-funnel-bar" style="width:${maxVal>0?((s.val||0)/maxVal*100):0}%"></div>
+          </div>
+          <div class="ch-funnel-val">${(s.val||0).toLocaleString()}</div>
+          <div class="ch-funnel-rate">${s.rate !== null && s.rate !== undefined ? chFmt(s.rate,'pct')+' '+s.rateSuffix : ''}</div>
+        </div>
+      `).join('')}
+      <div class="ch-funnel-note">
+        ${Object.entries(cv.benchmarks||{}).map(([ch, bm]) =>
+          `Benchmark MQL→SQL rate: ${ch} ${(bm.mql_sql_lo*100).toFixed(0)}–${(bm.mql_sql_hi*100).toFixed(0)}%`
+        ).slice(0,3).join(' · ')}
+      </div>
+    `;
+    document.getElementById('ch-funnel').innerHTML = funnelHtml;
+  }
+
+  // ── Awareness section ─────────────────────────────────────────────────────
+  const awSection = document.getElementById('ch-aw-section');
+  awSection.style.display = awRows.length ? '' : 'none';
+  if (awRows.length) {
+    document.getElementById('ch-aw-alloc').textContent =
+      `${chFmt(awSpend,'currency')} allocated · primary metric: CPM, brand lift, assisted conv.`;
+
+    function awRow(r) {
+      const dot = `<span class="ch-dot" style="background:${CH_COLORS[r.channel]||'#94A3B8'}"></span>`;
+      return `<tr>
+        <td>${dot}${r.channel}</td>
+        <td>${chFmt(r.spend,'currency')}</td>
+        <td>${r.impressions ? chFmt(r.impressions,'num') : '—'}</td>
+        <td>${r.cpm ? chFmt(r.cpm,'cpc') : '—'}</td>
+        <td>${r.reach ? chFmt(r.reach,'num') : '—'}</td>
+        <td>${r.freq ? r.freq.toFixed(1) + '×' : '—'}</td>
+        <td>${r.vcr !== null && r.vcr !== undefined ? chFmt(r.vcr,'pct') : '—'}</td>
+        <td>${r.brand_lift !== null && r.brand_lift !== undefined ? '+'+chFmt(r.brand_lift,'pct') : '—'}</td>
+        <td>${r.assisted_conv || '—'}</td>
+      </tr>`;
+    }
+
+    document.getElementById('ch-aw-tbody').innerHTML = awRows.map(awRow).join('');
+
+    const awTotals = {
+      spend:        awRows.reduce((s,r)=>s+r.spend,0),
+      impressions:  awRows.reduce((s,r)=>s+r.impressions,0),
+      reach:        awRows.reduce((s,r)=>s+(r.reach||0),0),
+      assisted_conv:awRows.reduce((s,r)=>s+(r.assisted_conv||0),0),
+    };
+    document.getElementById('ch-aw-tfoot').innerHTML = `<tr class="tfoot-row">
+      <td>Total — awareness</td>
+      <td>${chFmt(awTotals.spend,'currency')}</td>
+      <td>${chFmt(awTotals.impressions,'num')}</td>
+      <td>${awTotals.impressions ? chFmt(awTotals.spend/awTotals.impressions*1000,'cpc') : '—'}</td>
+      <td>${awTotals.reach ? chFmt(awTotals.reach,'num') : '—'}</td>
+      <td>—</td><td>—</td><td>—</td>
+      <td>${awTotals.assisted_conv}</td>
+    </tr>`;
+
+    const avgLift = (() => {
+      const withLift = awRows.filter(r => r.brand_lift !== null && r.brand_lift !== undefined);
+      if (!withLift.length) return null;
+      return withLift.reduce((s,r)=>s+r.brand_lift,0) / withLift.length;
+    })();
+
+    document.getElementById('ch-aw-summary').innerHTML = `
+      <div class="ch-aw-card">
+        <div class="ch-aw-card-val">${awTotals.reach ? chFmt(awTotals.reach,'num') : '—'}</div>
+        <div class="ch-aw-card-label">Total reach</div>
+        <div class="ch-aw-card-sub">Unique users across all channels</div>
+      </div>
+      <div class="ch-aw-card">
+        <div class="ch-aw-card-val">${avgLift !== null ? '+'+chFmt(avgLift,'pct') : '—'}</div>
+        <div class="ch-aw-card-label">Avg. brand search lift</div>
+        <div class="ch-aw-card-sub">Meta + YouTube (surveyed cohort)</div>
+      </div>
+      <div class="ch-aw-card">
+        <div class="ch-aw-card-val">${awTotals.assisted_conv}</div>
+        <div class="ch-aw-card-label">Assisted conversions</div>
+        <div class="ch-aw-card-sub">${totalSQL > 0 ? Math.round(awTotals.assisted_conv/totalSQL*100)+'% of SQLs touched an awareness ad' : '30-day view-through'}</div>
+      </div>
+      <div class="ch-aw-card">
+        <div class="ch-aw-card-val">${totalSpend > 0 ? chFmt(awSpend/totalSpend,'pct') : '—'}</div>
+        <div class="ch-aw-card-label">Awareness % of budget</div>
+        <div class="ch-aw-card-sub">Benchmark: 25–35% for growth stage</div>
+      </div>
+    `;
+  }
+
+  // ── Spend donut chart ─────────────────────────────────────────────────────
+  const donutCtx = document.getElementById('ch-chart-donut');
+  if (donutCtx) {
+    const donutRows = [...rows].sort((a,b) => b.spend - a.spend);
+    if (_chDonutChart) { _chDonutChart.destroy(); _chDonutChart = null; }
+    _chDonutChart = new Chart(donutCtx, {
+      type: 'doughnut',
+      data: {
+        labels: donutRows.map(r => r.channel),
+        datasets: [{
+          data: donutRows.map(r => r.spend),
+          backgroundColor: donutRows.map(r => CH_COLORS[r.channel] || '#94A3B8'),
+          borderWidth: 2, borderColor: '#fff',
+        }],
+      },
+      options: {
+        plugins: {
+          legend: { position:'bottom', labels:{ font:{size:11}, padding:10 } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${chFmt(ctx.raw,'currency')}` } },
+        },
+        cutout: '65%',
+      },
+    });
+  }
+
+  // ── Weekly SQL stacked bar ────────────────────────────────────────────────
+  const wSqlCtx = document.getElementById('ch-chart-weekly-sql');
+  if (wSqlCtx) {
+    if (_chWeeklySqlChart) { _chWeeklySqlChart.destroy(); _chWeeklySqlChart = null; }
+    const weeklySql = (cv.weekly_sql || []).filter(r => r.week && r.week.startsWith(mo.slice(0,7)));
+    const weeks = [...new Set(weeklySql.map(r => r.week))].sort().slice(-4);
+    const sqlChNames = [...new Set(sqlRows.map(r => r.channel))];
+    const wDatasets = sqlChNames.map(ch => ({
+      label: ch,
+      data: weeks.map(w => {
+        const found = weeklySql.find(r => r.week === w && r.channel === ch);
+        return found ? found.sqls : 0;
+      }),
+      backgroundColor: CH_COLORS[ch] || '#94A3B8',
+    }));
+    _chWeeklySqlChart = new Chart(wSqlCtx, {
+      type: 'bar',
+      data: {
+        labels: weeks.map(w => 'Week ' + (weeks.indexOf(w)+1)),
+        datasets: wDatasets,
+      },
+      options: {
+        plugins: { legend: { position:'bottom', labels:{ font:{size:11} } } },
+        scales: { x:{ stacked:true }, y:{ stacked:true, beginAtZero:true, ticks:{stepSize:1} } },
+      },
+    });
+  }
+
+  // ── Budget pacing ─────────────────────────────────────────────────────────
+  const pacingSection = document.getElementById('ch-pacing-section');
+  const rowsWithBudget = rows.filter(r => r.budget > 0);
+  pacingSection.style.display = rowsWithBudget.length ? '' : 'none';
+  if (rowsWithBudget.length) {
+    document.getElementById('ch-pacing-rows').innerHTML = rowsWithBudget.map(r => {
+      const pct = r.spend / r.budget;
+      const pctCapped = Math.min(pct, 1.1);
+      const cls = pct > 1.05 ? 'pacing-over' : pct >= 0.90 ? 'pacing-good' : pct >= 0.80 ? 'pacing-warn' : 'pacing-bad';
+      return `<div class="ch-pacing-row">
+        <div class="ch-pacing-label">${r.channel}</div>
+        <div class="ch-pacing-bar-wrap">
+          <div class="ch-pacing-bar ${cls}" style="width:${pctCapped*100}%"></div>
+        </div>
+        <div class="ch-pacing-pct" style="color:${pct>=0.90?'#16A34A':pct>=0.80?'#D97706':'#DC2626'}">${Math.round(pct*100)}%</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Signals ───────────────────────────────────────────────────────────────
+  const signalsSection = document.getElementById('ch-signals-section');
+  const signals = (cv.signals_by_month || {})[mo] || [];
+  signalsSection.style.display = signals.length ? '' : 'none';
+  if (signals.length) {
+    document.getElementById('ch-signals-list').innerHTML = signals.map((s, i) =>
+      `<div class="ch-signal-item">
+        <div class="ch-signal-num">${i+1}</div>
+        <div>${s}</div>
+      </div>`
+    ).join('');
+  }
+}
+
 function render(fromYM, toYM) {
   lastRange = { fromYM, toYM };
-  const fc = filterByRange(D.campaigns,    fromYM, toYM);
-  const fk = filterByRange(D.monthly_kpis, fromYM, toYM);
-
-  renderKpis(fk);
-  renderFunnelTable('tbody-type',   'tfoot-type',   aggregate(fc,'campaign_type'), TYPE_ORDER);
-  renderFunnelTable('tbody-region', 'tfoot-region', aggregate(fc,'region'),        REGION_ORDER);
-  renderRegionTypeTable(fc);
-
-  const empty   = { cost:0, mql:0, sql:0 };
-  const byCh    = aggregate(fc, 'channel');
-  const search  = byCh['Paid Search'] || {...empty};
-  const pother  = byCh['Paid Other']  || {...empty};
-  renderCompareCard('card-search', 'Paid Search', 'Google &amp; Bing SEM campaigns',             search);
-  renderCompareCard('card-other',  'Paid Other',  'Facebook, Display &amp; Demand Gen campaigns', pother);
-  renderCompareChart(search, pother);
-  renderMqlSqlChart(fc);
+  renderChannelOverview(toYM);
   renderTrendCharts(fromYM, toYM);
   renderIsWeeklyChart();
 }
