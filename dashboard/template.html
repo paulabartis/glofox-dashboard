@@ -564,7 +564,7 @@
         <thead><tr>
           <th>Channel</th><th>Spend</th><th>Impressions</th><th>CPM</th>
           <th>Reach</th><th>Freq.</th><th>VCR</th>
-          <th>Brand lift</th><th>Assisted conv.</th>
+          <th>Brand lift</th><th>MQLs</th><th>MQL→SQL</th><th>SQLs</th>
         </tr></thead>
         <tbody id="ch-aw-tbody"></tbody>
         <tfoot id="ch-aw-tfoot"></tfoot>
@@ -2579,17 +2579,20 @@ function renderChannelOverview(month) {
         <td>${r.freq ? r.freq.toFixed(1) + '×' : '—'}</td>
         <td>${r.vcr !== null && r.vcr !== undefined ? chFmt(r.vcr,'pct') : '—'}</td>
         <td>${r.brand_lift !== null && r.brand_lift !== undefined ? '+'+chFmt(r.brand_lift,'pct') : '—'}</td>
-        <td>${r.assisted_conv || '—'}</td>
+        <td>${r.mql || '—'}</td>
+        <td>${r.mql > 0 ? chFmt(r.sql / r.mql,'pct') : '—'}</td>
+        <td>${r.sql || '—'}</td>
       </tr>`;
     }
 
     document.getElementById('ch-aw-tbody').innerHTML = awRows.map(awRow).join('');
 
     const awTotals = {
-      spend:        awRows.reduce((s,r)=>s+r.spend,0),
-      impressions:  awRows.reduce((s,r)=>s+r.impressions,0),
-      reach:        awRows.reduce((s,r)=>s+(r.reach||0),0),
-      assisted_conv:awRows.reduce((s,r)=>s+(r.assisted_conv||0),0),
+      spend:       awRows.reduce((s,r)=>s+r.spend,0),
+      impressions: awRows.reduce((s,r)=>s+r.impressions,0),
+      reach:       awRows.reduce((s,r)=>s+(r.reach||0),0),
+      mql:         awRows.reduce((s,r)=>s+(r.mql||0),0),
+      sql:         awRows.reduce((s,r)=>s+(r.sql||0),0),
     };
     document.getElementById('ch-aw-tfoot').innerHTML = `<tr class="tfoot-row">
       <td>Total — awareness</td>
@@ -2598,7 +2601,9 @@ function renderChannelOverview(month) {
       <td>${awTotals.impressions ? chFmt(awTotals.spend/awTotals.impressions*1000,'cpc') : '—'}</td>
       <td>${awTotals.reach ? chFmt(awTotals.reach,'num') : '—'}</td>
       <td>—</td><td>—</td><td>—</td>
-      <td>${awTotals.assisted_conv}</td>
+      <td>${awTotals.mql || '—'}</td>
+      <td>${awTotals.mql > 0 ? chFmt(awTotals.sql/awTotals.mql,'pct') : '—'}</td>
+      <td>${awTotals.sql || '—'}</td>
     </tr>`;
 
     const avgLift = (() => {
