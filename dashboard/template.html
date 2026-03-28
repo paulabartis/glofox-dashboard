@@ -542,7 +542,7 @@
         <thead><tr>
           <th>Channel</th><th>Spend</th><th>Impr.</th><th>Clicks</th>
           <th>CTR</th><th>CPC</th><th>Leads</th><th>CPL</th>
-          <th>MQLs</th><th>MQL rate</th><th>SQLs</th><th>Cost/SQL</th>
+          <th>MQLs</th><th>MQL→SQL</th><th>SQLs</th><th>Cost/SQL</th>
         </tr></thead>
         <tbody id="ch-sql-tbody"></tbody>
         <tfoot id="ch-sql-tfoot"></tfoot>
@@ -2493,7 +2493,7 @@ function renderChannelOverview(month) {
 
     function sqlRow(r) {
       const dot = `<span class="ch-dot" style="background:${CH_COLORS[r.channel]||'#94A3B8'}"></span>`;
-      const mqlRate = r.impressions > 0 && r.leads > 0 && r.mql > 0 ? r.mql / r.leads : null;
+      const mqlRate = r.mql > 0 ? r.sql / r.mql : null;
       const costSql = r.sql > 0 ? r.spend / r.sql : null;
       return `<tr>
         <td>${dot}${r.channel}</td>
@@ -2514,7 +2514,7 @@ function renderChannelOverview(month) {
     document.getElementById('ch-sql-tbody').innerHTML = sqlRows.map(sqlRow).join('');
 
     const totCostSql = sqlTotals.sql > 0 ? sqlTotals.spend / sqlTotals.sql : null;
-    const totMqlRate = sqlTotals.leads > 0 && sqlTotals.mql > 0 ? sqlTotals.mql / sqlTotals.leads : null;
+    const totMqlRate = sqlTotals.mql > 0 ? sqlTotals.sql / sqlTotals.mql : null;
     document.getElementById('ch-sql-tfoot').innerHTML = `<tr class="tfoot-row">
       <td>Total — SQL channels</td>
       <td>${chFmt(sqlTotals.spend,'currency')}</td>
