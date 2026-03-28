@@ -108,9 +108,24 @@ def parse_month_from_date(val: Any) -> int:
 
 # ── Campaign name parsing ─────────────────────────────────────────────────────
 
+def detect_platform(name: str) -> str:
+    """Detect ad platform from campaign name. Returns 'Google', 'Bing', 'Capterra', or 'Other'."""
+    parts = name.split("_")
+    # __gads_ synthetic rows are always Google
+    if name.startswith("__gads_"):
+        return "Google"
+    if any(p in ("Google", "Adwords") for p in parts):
+        return "Google"
+    if "Bing" in parts:
+        return "Bing"
+    if "Capterra" in parts:
+        return "Capterra"
+    return "Other"
+
+
 def parse_campaign_meta(name: str) -> dict:
     """
-    Extract campaign_type, region, and channel from a Glofox campaign name.
+    Extract campaign_type, region, channel, and platform from a Glofox campaign name.
 
     Naming convention: SEGMENT_Direction_Channel_PPC_Type_CampaignType_Region_MMDDYY
     Example: SMB_Inbound_Google_PPC_SEM_GymMgmt_WW_010125
@@ -158,7 +173,8 @@ def parse_campaign_meta(name: str) -> dict:
             region = "NAM"
             break
 
-    return {"campaign_type": campaign_type, "region": region, "channel": channel}
+    return {"campaign_type": campaign_type, "region": region, "channel": channel,
+            "platform": detect_platform(name)}
 
 
 def is_paid_ppc(name: str, source: str = "") -> bool:
@@ -566,6 +582,7 @@ def build_campaign_rows(
             "campaign_type": meta["campaign_type"],
             "region":        meta["region"],
             "channel":       meta["channel"],
+            "platform":      meta["platform"],
             "impressions":   0,
             "clicks":        0,
             "cost":          0.0,
@@ -613,6 +630,7 @@ def build_campaign_rows(
             "campaign_type": g["campaign_type"],
             "region":        g["region"],
             "channel":       g["channel"],
+            "platform":      "Google",
             "impressions":   g["impressions"],
             "clicks":        g["clicks"],
             "cost":          g["cost"],

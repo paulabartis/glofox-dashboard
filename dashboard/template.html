@@ -35,6 +35,13 @@
   }
   .period-btn:hover { border-color: #3B82F6; color: #3B82F6; }
   .period-btn.active { background: #3B82F6; border-color: #3B82F6; color: #fff; font-weight: 600; }
+  .plat-btn {
+    padding: 4px 12px; border: 1.5px solid #CBD5E1; border-radius: 5px;
+    background: #fff; color: #475569; font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: all .15s;
+  }
+  .plat-btn:hover { border-color: #3B82F6; color: #3B82F6; }
+  .plat-btn.active { background: #1E293B; border-color: #1E293B; color: #fff; }
   .period-divider { width: 1px; height: 24px; background: #E2E8F0; margin: 0 8px; }
   .month-sel {
     padding: 5px 10px; border: 1.5px solid #CBD5E1; border-radius: 6px;
@@ -657,11 +664,22 @@
       <div id="kpi-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px"></div>
     </div>
 
+    <!-- Platform filter toggle -->
+    <div style="padding:0 20px 4px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;font-weight:500;color:#94A3B8">Platform:</span>
+      <div id="platform-toggle" style="display:flex;gap:4px">
+        <button class="plat-btn active" data-plat="all">All</button>
+        <button class="plat-btn" data-plat="Google">Google</button>
+        <button class="plat-btn" data-plat="Bing">Bing</button>
+      </div>
+      <span id="plat-label" style="font-size:12px;color:#94A3B8;margin-left:4px"></span>
+    </div>
+
     <!-- Full Funnel by Campaign Type -->
     <div class="section">
       <div class="section-header">
         <h2>Full Funnel by Campaign Type</h2>
-        <span class="section-tag">Google &amp; Bing PPC</span>
+        <span id="camp-type-tag" class="section-tag">Google &amp; Bing PPC</span>
       </div>
       <table class="data-table">
         <thead><tr>
@@ -903,7 +921,7 @@ function aggregate(rows, key) {
 }
 
 // ── Orders ────────────────────────────────────────────────────────────────────
-const TYPE_ORDER   = ['GymManagement', 'Modality', 'Branded', 'Competitor', 'Demand Gen'];
+const TYPE_ORDER   = ['GymManagement', 'Modality', 'Branded', 'Competitor', 'Demand Gen', 'Other'];
 const REGION_ORDER = ['NAM', 'EMEA', 'APAC'];
 
 // ── Funnel table ──────────────────────────────────────────────────────────────
@@ -2812,9 +2830,28 @@ function renderChannelOverview(month) {
   }
 }
 
-function renderCampaignOverview(fromYM, toYM) {
-  const fc = filterByRange(D.campaigns,    fromYM, toYM);
+let _campPlatFilter = 'all';
+
+function renderCampaignOverview(fromYM, toYM, plat) {
+  if (plat !== undefined) _campPlatFilter = plat;
+  const p = _campPlatFilter;
+
+  let fc = filterByRange(D.campaigns, fromYM, toYM);
+  // Apply platform filter (skip _is_gads_agg rows when filtering — they carry cost only)
+  if (p !== 'all') {
+    fc = fc.filter(r => r._is_gads_agg ? p === 'Google' : (r.platform || 'Other') === p);
+  }
   const fk = filterByRange(D.monthly_kpis, fromYM, toYM);
+
+  // Update tag label
+  const tagEl = document.getElementById('camp-type-tag');
+  if (tagEl) tagEl.textContent = p === 'all' ? 'Google & Bing PPC' : p + ' only';
+  const lblEl = document.getElementById('plat-label');
+  if (lblEl) {
+    const total = fc.reduce((s,r) => s + r.mql, 0);
+    lblEl.textContent = p !== 'all' ? `${total.toLocaleString()} MQLs` : '';
+  }
+
   renderKpis(fk);
   renderFunnelTable('tbody-type',   'tfoot-type',   aggregate(fc,'campaign_type'), TYPE_ORDER);
   renderFunnelTable('tbody-region', 'tfoot-region', aggregate(fc,'region'),        REGION_ORDER);
@@ -2824,8 +2861,9 @@ function renderCampaignOverview(fromYM, toYM) {
   const byCh   = aggregate(fc, 'channel');
   const search = byCh['Paid Search'] || {...empty};
   const pother = byCh['Paid Other']  || {...empty};
-  renderCompareCard('card-search', 'Paid Search', 'Google &amp; Bing SEM campaigns',              search);
-  renderCompareCard('card-other',  'Paid Other',  'Facebook, Display &amp; Demand Gen campaigns', pother);
+  const searchDesc = p === 'Bing' ? 'Bing SEM campaigns' : p === 'Google' ? 'Google SEM campaigns' : 'Google &amp; Bing SEM campaigns';
+  renderCompareCard('card-search', 'Paid Search', searchDesc, search);
+  renderCompareCard('card-other',  'Paid Other',  'Display &amp; Demand Gen campaigns', pother);
   renderCompareChart(search, pother);
 }
 
@@ -2889,6 +2927,14 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'changes')     renderChangesTab();
     if (tab === 'summary')     renderWeeklySummaryTab();
     if (tab === 'searchterms') renderSearchTermsTab(lastRange.fromYM, lastRange.toYM);
+  });
+});
+
+// Platform filter toggle (Campaign Overview tab)
+document.querySelectorAll('.plat-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.plat-btn').forEach(b => b.classList.toggle('active', b === btn));
+    renderCampaignOverview(lastRange.fromYM, lastRange.toYM, btn.dataset.plat);
   });
 });
 
