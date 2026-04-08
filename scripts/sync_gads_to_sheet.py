@@ -666,7 +666,7 @@ def sync_channel_summary_gads(service, gads_monthly_rows: list[dict]) -> None:
         if yr == 0 or mo == 0:
             continue
         channel, ch_type = classify_google_channel(row["campaign_name"])
-        month_key = f"{yr}-{mo:02d}"
+        month_key = f"{int(yr)}-{int(mo):02d}"
         key = (month_key, channel)
         if key not in agg:
             agg[key] = {
