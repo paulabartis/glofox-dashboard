@@ -2837,9 +2837,9 @@ function renderCampaignOverview(fromYM, toYM, plat) {
   const p = _campPlatFilter;
 
   let fc = filterByRange(D.campaigns, fromYM, toYM);
-  // Apply platform filter (skip _is_gads_agg rows when filtering — they carry cost only)
+  // Apply platform filter — use r.platform for all rows (agg rows have platform='Google'|'Bing')
   if (p !== 'all') {
-    fc = fc.filter(r => r._is_gads_agg ? p === 'Google' : (r.platform || 'Other') === p);
+    fc = fc.filter(r => (r.platform || 'Other') === p);
   }
   const fk = filterByRange(D.monthly_kpis, fromYM, toYM);
 

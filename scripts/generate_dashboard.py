@@ -239,6 +239,34 @@ def load_gads_data(service) -> list[dict]:
     return result
 
 
+def load_bing_data(service) -> list[dict]:
+    """
+    BingData tab (written by sync_bing_to_sheet.py).
+    Same schema as GadsData: Campaign | Year | Month | Impressions | Clicks | Cost
+    Returns [] gracefully if the tab doesn't exist yet.
+    """
+    try:
+        rows = read_tab(service, "BingData")
+    except Exception:
+        return []
+    result = []
+    for row in rows[1:]:  # skip header
+        if len(row) < 6:
+            continue
+        name = str(row[0]).strip()
+        if not name:
+            continue
+        result.append({
+            "name": name,
+            "year": safe_int(row[1]),
+            "month": parse_month_from_date(row[2]),
+            "impressions": safe_int(row[3]),
+            "clicks": safe_int(row[4]),
+            "cost": safe_float(row[5]),
+        })
+    return result
+
+
 def parse_adgroup_campaign_name(name: str) -> dict:
     """
     Parse Google Ads readable campaign names into campaign_type + region.
@@ -554,17 +582,19 @@ def load_monthly_summary(service) -> list[dict]:
 def build_campaign_rows(
     gads_data: list[dict],
     campaigns_data: list[dict],
+    bing_data: list[dict] | None = None,
 ) -> list[dict]:
     """
-    Build campaign rows for the dashboard from two incompatible naming systems.
+    Build campaign rows for the dashboard from two (or three) incompatible naming systems.
 
     GadsData uses Google Ads readable names ("Gym Management USA") while
     CampaignsData uses Looker-style names ("SMB_Inbound_Google_PPC_SEM_GymMgmt_USA_010125").
-    A name-level join is impossible, so the two sources are kept separate:
+    A name-level join is impossible, so the sources are kept separate:
 
     1. CampaignsData rows → one row per Looker campaign (MQL/SQL, cost=0).
     2. GadsData aggregate rows → one row per (campaign_type, region, year, month)
-       carrying real cost/impressions/clicks, mql=sql=0, flagged _is_gads_agg=True.
+       carrying real cost/impressions/clicks, mql=sql=0, platform='Google', _is_gads_agg=True.
+    3. BingData aggregate rows → same structure, platform='Bing', _is_gads_agg=True.
 
     The JS groups by campaign_type and region, so Overview tab aggregates are correct.
     compute_optimizations() uses both row types to build per-(type, region) cards.
@@ -631,6 +661,51 @@ def build_campaign_rows(
             "region":        g["region"],
             "channel":       g["channel"],
             "platform":      "Google",
+            "impressions":   g["impressions"],
+            "clicks":        g["clicks"],
+            "cost":          g["cost"],
+            "mql":           0,
+            "sql":           0,
+            "_is_gads_agg":  True,
+        })
+
+    # ── 3. BingData aggregate rows (cost/traffic, no MQL/SQL, platform='Bing') ─
+    bing_agg: dict[tuple, dict] = {}
+    for row in (bing_data or []):
+        yr = row["year"]
+        mo = row["month"]
+        if yr == 0 or mo == 0:
+            continue
+        meta = parse_adgroup_campaign_name(row["name"])
+        ct   = meta["campaign_type"]
+        reg  = meta["region"]
+        key  = (ct, reg, yr, mo)
+        if key not in bing_agg:
+            ch = "Paid Other" if ct == "Demand Gen" else "Paid Search"
+            bing_agg[key] = {
+                "campaign_type": ct,
+                "region":        reg,
+                "year":          yr,
+                "month":         mo,
+                "channel":       ch,
+                "impressions":   0,
+                "clicks":        0,
+                "cost":          0.0,
+            }
+        bing_agg[key]["impressions"] += row["impressions"]
+        bing_agg[key]["clicks"]      += row["clicks"]
+        bing_agg[key]["cost"]        += row["cost"]
+
+    for (ct, reg, yr, mo), g in bing_agg.items():
+        merged.append({
+            "campaign_name": f"__bing_{ct}_{reg}",
+            "year":          yr,
+            "month":         mo,
+            "label":         month_label(yr, mo),
+            "campaign_type": g["campaign_type"],
+            "region":        g["region"],
+            "channel":       g["channel"],
+            "platform":      "Bing",
             "impressions":   g["impressions"],
             "clicks":        g["clicks"],
             "cost":          g["cost"],
@@ -1463,6 +1538,7 @@ def main():
 
     print("[2/5] Reading sheet data...")
     gads_data = load_gads_data(service)
+    bing_data = load_bing_data(service)
     campaigns_data = load_campaigns_data(service)
     monthly_summary = load_monthly_summary(service)
     adgroup_data = load_adgroup_data(service)
@@ -1473,6 +1549,7 @@ def main():
     channel_summary = load_channel_summary(service)
     weekly_channel_sql = load_weekly_channel_sql(service)
     print(f"  GadsData: {len(gads_data)} rows")
+    print(f"  BingData: {len(bing_data)} rows")
     print(f"  CampaignsData (paid PPC): {len(campaigns_data)} rows")
     print(f"  MonthlySummary: {len(monthly_summary)} periods")
     print(f"  AdGroupData (paid PPC): {len(adgroup_data)} rows")
@@ -1483,7 +1560,7 @@ def main():
     print(f"  WeeklyChannelSQL: {len(weekly_channel_sql)} rows")
 
     print("[3/5] Joining and processing data...")
-    campaign_rows = build_campaign_rows(gads_data, campaigns_data)
+    campaign_rows = build_campaign_rows(gads_data, campaigns_data, bing_data)
     print(f"  Merged campaign rows: {len(campaign_rows)}")
 
     print("[4/5] Building dashboard payload...")
