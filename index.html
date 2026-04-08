@@ -358,15 +358,15 @@
     --ch-podcast:   #8B5CF6;
   }
   .ch-month-bar {
-    display:flex; align-items:center; gap:6px;
+    display:flex; align-items:center; gap:8px;
     margin-bottom:20px; flex-wrap:wrap;
   }
-  .ch-month-btn {
-    padding:5px 13px; border:1.5px solid #CBD5E1; border-radius:6px;
-    background:#fff; color:#475569; font-size:13px; cursor:pointer; transition:all .15s;
+  .ch-period-select {
+    padding:5px 10px; border:1.5px solid #CBD5E1; border-radius:6px;
+    background:#fff; color:#1E293B; font-size:13px; cursor:pointer;
+    font-family:inherit; min-width:220px; outline:none; transition:border-color .15s;
   }
-  .ch-month-btn:hover { border-color:#3B82F6; color:#3B82F6; }
-  .ch-month-btn.active { background:#3B82F6; border-color:#3B82F6; color:#fff; font-weight:600; }
+  .ch-period-select:hover, .ch-period-select:focus { border-color:#3B82F6; }
   /* KPI cards */
   .ch-kpi-grid {
     display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
@@ -2417,7 +2417,7 @@ const CH_ORDER = Object.keys(CH_COLORS);
 
 let _chDonutChart = null;
 let _chWeeklySqlChart = null;
-let _chCurrentMonth = null;
+let _chSelectedMonths = [];  // array of "YYYY-MM" strings
 
 function chFmt(n, type) {
   if (n === null || n === undefined || n === '') return '—';
@@ -2448,22 +2448,105 @@ function chDeltaHtml(val, invertColor) {
   return ` <span class="${cls}">${arrow}${Math.abs(val).toLocaleString()}</span>`;
 }
 
-function buildChMonthBar(months) {
+function periodLabel(selMonths) {
+  if (!selMonths.length) return '';
+  if (selMonths.length === 1) return chMonthLabel(selMonths[0]);
+  return chMonthLabel(selMonths[0]) + ' – ' + chMonthLabel(selMonths[selMonths.length - 1]);
+}
+
+function aggregateChannelRows(rows) {
+  // Sum additive metrics per channel across multiple months; re-compute rates.
+  const byChannel = {};
+  for (const r of rows) {
+    if (!byChannel[r.channel]) {
+      byChannel[r.channel] = {
+        channel: r.channel, channel_type: r.channel_type,
+        budget:0, spend:0, impressions:0, clicks:0,
+        leads:0, mql:0, sql:0, reach:0, assisted_conv:0,
+      };
+    }
+    const a = byChannel[r.channel];
+    a.budget        += r.budget        || 0;
+    a.spend         += r.spend         || 0;
+    a.impressions   += r.impressions   || 0;
+    a.clicks        += r.clicks        || 0;
+    a.leads         += r.leads         || 0;
+    a.mql           += r.mql           || 0;
+    a.sql           += r.sql           || 0;
+    a.reach         += r.reach         || 0;
+    a.assisted_conv += r.assisted_conv || 0;
+  }
+  return Object.values(byChannel).map(a => ({
+    ...a,
+    ctr:       a.impressions > 0 ? a.clicks / a.impressions         : null,
+    cpc:       a.clicks      > 0 ? a.spend  / a.clicks              : null,
+    cpm:       a.impressions > 0 ? a.spend  / a.impressions * 1000  : null,
+    cpl:       a.leads       > 0 ? a.spend  / a.leads               : null,
+    brand_lift: null, freq: null, vcr: null,  // can't aggregate sensibly across months
+  }));
+}
+
+function buildPeriodPicker(allMonths) {
   const bar = document.getElementById('ch-month-bar');
   if (!bar) return;
-  bar.innerHTML = '<span class="bar-label">Month:</span>' +
-    months.map(m =>
-      `<button class="ch-month-btn${m === _chCurrentMonth ? ' active' : ''}" data-month="${m}">${chMonthLabel(m)}</button>`
-    ).join('');
-  bar.querySelectorAll('.ch-month-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _chCurrentMonth = btn.dataset.month;
-      renderChannelOverview(_chCurrentMonth);
-    });
+  const currentVal = _chSelectedMonths.join('|');
+
+  // 1. Individual months — newest first, capped at 18
+  const indivOpts = [...allMonths].reverse().slice(0, 18).map(m =>
+    `<option value="${m}"${currentVal === m ? ' selected' : ''}>${chMonthLabel(m)}</option>`
+  ).join('');
+
+  // 2. Quarters — group months into calendar quarters
+  const quarters = {};
+  allMonths.forEach(m => {
+    const [y, mo] = m.split('-').map(Number);
+    const q = Math.ceil(mo / 3);
+    const key = `${y}-Q${q}`;
+    if (!quarters[key]) quarters[key] = { label: `Q${q} '${String(y).slice(2)}`, months: [] };
+    quarters[key].months.push(m);
+  });
+  const quarterOpts = Object.entries(quarters)
+    .filter(([, q]) => q.months.length >= 2)
+    .reverse().slice(0, 8)
+    .map(([, q]) => {
+      const val = q.months.join('|');
+      const range = periodLabel(q.months);
+      const full = q.months.length === 3;
+      const lbl = full ? `${q.label} (${range})` : `${q.label} partial (${range})`;
+      return `<option value="${val}"${currentVal === val ? ' selected' : ''}>${lbl}</option>`;
+    }).join('');
+
+  // 3. Year / YTD groups
+  const yearGroups = {};
+  allMonths.forEach(m => {
+    const y = m.split('-')[0];
+    if (!yearGroups[y]) yearGroups[y] = [];
+    yearGroups[y].push(m);
+  });
+  const currentYear = String(new Date().getFullYear());
+  const yearOpts = Object.entries(yearGroups).reverse().slice(0, 3).map(([y, mos]) => {
+    const val = mos.join('|');
+    const lbl = (y === currentYear && mos.length < 12)
+      ? `${y} YTD (${periodLabel(mos)})`
+      : `${y} full year`;
+    return `<option value="${val}"${currentVal === val ? ' selected' : ''}>${lbl}</option>`;
+  }).join('');
+
+  bar.innerHTML = `
+    <span class="bar-label">Period:</span>
+    <select id="ch-period-select" class="ch-period-select">
+      <optgroup label="Individual months">${indivOpts}</optgroup>
+      ${quarterOpts ? `<optgroup label="Quarters">${quarterOpts}</optgroup>` : ''}
+      ${yearOpts    ? `<optgroup label="Year">${yearOpts}</optgroup>`         : ''}
+    </select>`;
+
+  document.getElementById('ch-period-select').addEventListener('change', function() {
+    _chSelectedMonths = this.value.split('|').filter(Boolean);
+    renderChannelOverview();
   });
 }
 
-function renderChannelOverview(month) {
+function renderChannelOverview(initMonths) {
   const cv = D.channel_view;
   if (!cv || !cv.channel_rows || cv.channel_rows.length === 0) {
     document.getElementById('ch-kpi-grid').innerHTML =
@@ -2471,25 +2554,34 @@ function renderChannelOverview(month) {
     return;
   }
 
-  const months = cv.months || [];
-  if (!months.length) return;
+  const allMonths = cv.months || [];
+  if (!allMonths.length) return;
 
-  // Default to latest month if none selected
-  if (!month || !months.includes(month)) {
-    _chCurrentMonth = months[months.length - 1];
-  } else {
-    _chCurrentMonth = month;
+  // Initialise selection
+  if (initMonths) {
+    _chSelectedMonths = Array.isArray(initMonths) ? initMonths : [initMonths];
   }
-  const mo = _chCurrentMonth;
-  const moIdx = months.indexOf(mo);
-  const prevMo = moIdx > 0 ? months[moIdx - 1] : null;
+  // Validate — fall back to latest month if selection is empty/invalid
+  _chSelectedMonths = (_chSelectedMonths || []).filter(m => allMonths.includes(m));
+  if (!_chSelectedMonths.length) _chSelectedMonths = [allMonths[allMonths.length - 1]];
+  const selMonths = _chSelectedMonths;
 
-  // Build month selector
-  buildChMonthBar(months);
+  // Prior period: the N months immediately before the earliest selected month
+  const earliestIdx = allMonths.indexOf(selMonths[0]);
+  const n = selMonths.length;
+  const prevMonths = earliestIdx >= n ? allMonths.slice(earliestIdx - n, earliestIdx) : [];
 
-  // Rows for selected month
-  const rows = cv.channel_rows.filter(r => r.month === mo);
-  const prevRows = prevMo ? cv.channel_rows.filter(r => r.month === prevMo) : [];
+  // Build period picker (reflects current selection)
+  buildPeriodPicker(allMonths);
+
+  // Aggregate channel rows across all selected (and prior) months
+  const rawRows  = cv.channel_rows.filter(r => selMonths.includes(r.month));
+  const prevRaw  = cv.channel_rows.filter(r => prevMonths.includes(r.month));
+  const rows     = aggregateChannelRows(rawRows);
+  const prevRows = aggregateChannelRows(prevRaw);
+
+  const pLabel = periodLabel(selMonths);
+  const pLabelPrev = prevMonths.length ? periodLabel(prevMonths) : null;
 
   const sqlRows = rows.filter(r => r.channel_type === 'sql');
   const awRows  = rows.filter(r => r.channel_type === 'awareness');
@@ -2500,31 +2592,31 @@ function renderChannelOverview(month) {
   const totalMQL    = rows.reduce((s,r) => s + (r.mql||0), 0);
   const sqlSpend    = sqlRows.reduce((s,r) => s + r.spend, 0);
   const blendedCostSQL = totalSQL > 0 ? sqlSpend / totalSQL : null;
-  const blendedCPL  = totalSQL > 0 ? sqlSpend / totalSQL : null; // placeholder
   const totalLeads  = rows.reduce((s,r) => s + (r.leads||0), 0);
   const blendedCPLVal = totalLeads > 0 ? sqlSpend / totalLeads : null;
   const totalBudget = rows.reduce((s,r) => s + (r.budget||0), 0);
   const pacingPct   = totalBudget > 0 ? totalSpend / totalBudget : null;
 
-  // Prev month deltas
+  // Prior period deltas
   const prevSpend   = prevRows.reduce((s,r) => s + r.spend, 0);
   const prevSQL     = prevRows.reduce((s,r) => s + (r.sql||0), 0);
-  const prevCostSQL = prevSQL > 0 ? prevRows.filter(r=>r.channel_type==='sql').reduce((s,r)=>s+r.spend,0) / prevSQL : null;
+  const prevSqlSpend = prevRows.filter(r=>r.channel_type==='sql').reduce((s,r)=>s+r.spend,0);
+  const prevCostSQL = prevSQL > 0 ? prevSqlSpend / prevSQL : null;
 
   const kpis = [
     {
       label: 'Total spend',
       value: chFmt(totalSpend, 'currency'),
-      sub: totalBudget > 0
+      sub: totalBudget > 0 && n === 1
         ? `Budget ${chFmt(totalBudget,'currency')} · ${chFmt(pacingPct,'pct')} paced`
-        : chMonthLabel(mo),
+        : pLabel,
       delta: prevSpend > 0 ? Math.round(totalSpend - prevSpend) : null,
       invertDelta: true,
     },
     {
       label: 'Total SQLs',
       value: totalSQL,
-      sub: prevSQL > 0 ? `vs ${chMonthLabel(prevMo||'')} (${prevSQL})` : chMonthLabel(mo),
+      sub: pLabelPrev ? `vs ${pLabelPrev} (${prevSQL})` : pLabel,
       delta: prevSQL > 0 ? totalSQL - prevSQL : null,
       invertDelta: false,
     },
@@ -2538,7 +2630,7 @@ function renderChannelOverview(month) {
     {
       label: 'Total MQLs',
       value: totalMQL,
-      sub: totalMQL > 0 && totalSQL > 0 ? `${chFmt(totalSQL/totalMQL,'pct')} MQL→SQL` : chMonthLabel(mo),
+      sub: totalMQL > 0 && totalSQL > 0 ? `${chFmt(totalSQL/totalMQL,'pct')} MQL→SQL` : pLabel,
       delta: null,
       invertDelta: false,
     },
@@ -2568,7 +2660,7 @@ function renderChannelOverview(month) {
   if (totalSpend > 0) {
     allocWrap.style.display = '';
     document.getElementById('ch-alloc-label').textContent =
-      `${chMonthLabel(mo)} · Fitness SMB vertical · All figures USD`;
+      `${pLabel} · Fitness SMB vertical · All figures USD`;
     document.getElementById('ch-alloc-bar').innerHTML = `
       <div class="ch-alloc-sql" style="width:${sqlPct*100}%"></div>
       <div class="ch-alloc-aw"  style="width:${awPct*100}%"></div>
@@ -2649,7 +2741,7 @@ function renderChannelOverview(month) {
     ];
     const maxVal = Math.max(...funnelSteps.map(s => s.val || 0));
     const funnelHtml = `
-      <div class="ch-funnel-title">SQL channel funnel · cumulative ${chMonthLabel(mo)}</div>
+      <div class="ch-funnel-title">SQL channel funnel · cumulative ${pLabel}</div>
       ${funnelSteps.map(s => `
         <div class="ch-funnel-row">
           <div class="ch-funnel-label">${s.label}</div>
@@ -2773,7 +2865,7 @@ function renderChannelOverview(month) {
   const wSqlCtx = document.getElementById('ch-chart-weekly-sql');
   if (wSqlCtx) {
     if (_chWeeklySqlChart) { _chWeeklySqlChart.destroy(); _chWeeklySqlChart = null; }
-    const weeklySql = (cv.weekly_sql || []).filter(r => r.week && r.week.startsWith(mo.slice(0,7)));
+    const weeklySql = (cv.weekly_sql || []).filter(r => r.week && selMonths.some(m => r.week.startsWith(m.slice(0,7))));
     const weeks = [...new Set(weeklySql.map(r => r.week))].sort().slice(-4);
     const sqlChNames = [...new Set(sqlRows.map(r => r.channel))];
     const wDatasets = sqlChNames.map(ch => ({
@@ -2787,7 +2879,7 @@ function renderChannelOverview(month) {
     _chWeeklySqlChart = new Chart(wSqlCtx, {
       type: 'bar',
       data: {
-        labels: weeks.map(w => 'Week ' + (weeks.indexOf(w)+1)),
+        labels: weeks.map(w => w.slice(5)),  // "MM-DD" from "YYYY-MM-DD"
         datasets: wDatasets,
       },
       options: {
@@ -2797,9 +2889,9 @@ function renderChannelOverview(month) {
     });
   }
 
-  // ── Budget pacing ─────────────────────────────────────────────────────────
+  // ── Budget pacing — only shown for a single month selection ──────────────
   const pacingSection = document.getElementById('ch-pacing-section');
-  const rowsWithBudget = rows.filter(r => r.budget > 0);
+  const rowsWithBudget = n === 1 ? rows.filter(r => r.budget > 0) : [];
   pacingSection.style.display = rowsWithBudget.length ? '' : 'none';
   if (rowsWithBudget.length) {
     document.getElementById('ch-pacing-rows').innerHTML = rowsWithBudget.map(r => {
@@ -2816,9 +2908,10 @@ function renderChannelOverview(month) {
     }).join('');
   }
 
-  // ── Signals ───────────────────────────────────────────────────────────────
+  // ── Signals — use the most recent month in selection ─────────────────────
   const signalsSection = document.getElementById('ch-signals-section');
-  const signals = (cv.signals_by_month || {})[mo] || [];
+  const lastSelMo = selMonths[selMonths.length - 1];
+  const signals = (cv.signals_by_month || {})[lastSelMo] || [];
   signalsSection.style.display = signals.length ? '' : 'none';
   if (signals.length) {
     document.getElementById('ch-signals-list').innerHTML = signals.map((s, i) =>
@@ -2869,7 +2962,7 @@ function renderCampaignOverview(fromYM, toYM, plat) {
 
 function render(fromYM, toYM) {
   lastRange = { fromYM, toYM };
-  renderChannelOverview(toYM);
+  renderChannelOverview([toYM]);
   renderTrendCharts(fromYM, toYM);
   renderIsWeeklyChart();
 }
