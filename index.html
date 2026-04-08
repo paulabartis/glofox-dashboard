@@ -361,12 +361,10 @@
     display:flex; align-items:center; gap:8px;
     margin-bottom:20px; flex-wrap:wrap;
   }
-  .ch-period-select {
-    padding:5px 10px; border:1.5px solid #CBD5E1; border-radius:6px;
-    background:#fff; color:#1E293B; font-size:13px; cursor:pointer;
-    font-family:inherit; min-width:220px; outline:none; transition:border-color .15s;
+  .ch-period-label {
+    font-size:13px; color:#64748B;
   }
-  .ch-period-select:hover, .ch-period-select:focus { border-color:#3B82F6; }
+  .ch-period-label strong { color:#1E293B; }
   /* KPI cards */
   .ch-kpi-grid {
     display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
@@ -2486,64 +2484,24 @@ function aggregateChannelRows(rows) {
   }));
 }
 
-function buildPeriodPicker(allMonths) {
+function showPeriodLabel(selMonths) {
+  // Shows a small "Showing: Jan '26 – Mar '26" label — no interactive control.
   const bar = document.getElementById('ch-month-bar');
   if (!bar) return;
-  const currentVal = _chSelectedMonths.join('|');
+  bar.innerHTML = `<span class="ch-period-label">Showing: <strong>${periodLabel(selMonths)}</strong></span>`;
+}
 
-  // 1. Individual months — newest first, capped at 18
-  const indivOpts = [...allMonths].reverse().slice(0, 18).map(m =>
-    `<option value="${m}"${currentVal === m ? ' selected' : ''}>${chMonthLabel(m)}</option>`
-  ).join('');
-
-  // 2. Quarters — group months into calendar quarters
-  const quarters = {};
-  allMonths.forEach(m => {
-    const [y, mo] = m.split('-').map(Number);
-    const q = Math.ceil(mo / 3);
-    const key = `${y}-Q${q}`;
-    if (!quarters[key]) quarters[key] = { label: `Q${q} '${String(y).slice(2)}`, months: [] };
-    quarters[key].months.push(m);
-  });
-  const quarterOpts = Object.entries(quarters)
-    .filter(([, q]) => q.months.length >= 2)
-    .reverse().slice(0, 8)
-    .map(([, q]) => {
-      const val = q.months.join('|');
-      const range = periodLabel(q.months);
-      const full = q.months.length === 3;
-      const lbl = full ? `${q.label} (${range})` : `${q.label} partial (${range})`;
-      return `<option value="${val}"${currentVal === val ? ' selected' : ''}>${lbl}</option>`;
-    }).join('');
-
-  // 3. Year / YTD groups
-  const yearGroups = {};
-  allMonths.forEach(m => {
-    const y = m.split('-')[0];
-    if (!yearGroups[y]) yearGroups[y] = [];
-    yearGroups[y].push(m);
-  });
-  const currentYear = String(new Date().getFullYear());
-  const yearOpts = Object.entries(yearGroups).reverse().slice(0, 3).map(([y, mos]) => {
-    const val = mos.join('|');
-    const lbl = (y === currentYear && mos.length < 12)
-      ? `${y} YTD (${periodLabel(mos)})`
-      : `${y} full year`;
-    return `<option value="${val}"${currentVal === val ? ' selected' : ''}>${lbl}</option>`;
-  }).join('');
-
-  bar.innerHTML = `
-    <span class="bar-label">Period:</span>
-    <select id="ch-period-select" class="ch-period-select">
-      <optgroup label="Individual months">${indivOpts}</optgroup>
-      ${quarterOpts ? `<optgroup label="Quarters">${quarterOpts}</optgroup>` : ''}
-      ${yearOpts    ? `<optgroup label="Year">${yearOpts}</optgroup>`         : ''}
-    </select>`;
-
-  document.getElementById('ch-period-select').addEventListener('change', function() {
-    _chSelectedMonths = this.value.split('|').filter(Boolean);
-    renderChannelOverview();
-  });
+function monthsInRange(fromYM, toYM) {
+  // Returns all YYYY-MM strings from fromYM to toYM inclusive.
+  const result = [];
+  let [y, m] = fromYM.split('-').map(Number);
+  const [ty, tm] = toYM.split('-').map(Number);
+  while (y < ty || (y === ty && m <= tm)) {
+    result.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  return result;
 }
 
 function renderChannelOverview(initMonths) {
@@ -2571,8 +2529,8 @@ function renderChannelOverview(initMonths) {
   const n = selMonths.length;
   const prevMonths = earliestIdx >= n ? allMonths.slice(earliestIdx - n, earliestIdx) : [];
 
-  // Build period picker (reflects current selection)
-  buildPeriodPicker(allMonths);
+  // Show period label (driven by top filter — no separate control here)
+  showPeriodLabel(selMonths);
 
   // Aggregate channel rows across all selected (and prior) months
   const rawRows  = cv.channel_rows.filter(r => selMonths.includes(r.month));
@@ -2962,7 +2920,7 @@ function renderCampaignOverview(fromYM, toYM, plat) {
 
 function render(fromYM, toYM) {
   lastRange = { fromYM, toYM };
-  renderChannelOverview([toYM]);
+  renderChannelOverview(monthsInRange(fromYM, toYM));
   renderTrendCharts(fromYM, toYM);
   renderIsWeeklyChart();
 }
