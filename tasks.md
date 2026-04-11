@@ -8,25 +8,36 @@ Work through these one at a time. Do not start the next task until the current o
 
 ## Active Sprint
 
-### Task: Bing Ads integration — connect BingData to generate_dashboard.py
-`sync_bing_to_sheet.py` writes a `BingData` tab (same schema as `GadsData`).
-`generate_dashboard.py` does not yet load or use it. The Bing platform filter
-button exists in the Campaign Overview tab but shows nothing without data.
-
-**Sub-tasks:**
+### Task: Bing Ads integration — connect BingData to generate_dashboard.py ✅
 - [x] `sync_bing_to_sheet.py` written and ready
 - [x] `detect_platform()` in `generate_dashboard.py` already handles Bing
 - [x] Bing platform filter toggle exists in `dashboard/template.html`
-- [x] Add `load_bing_data()` to `generate_dashboard.py` (mirror of `load_gads_data()`, returns `[]` gracefully if tab missing)
-- [x] Update `build_campaign_rows()` to accept `bing_data` and add Bing aggregate rows (`__bing_*`, `platform='Bing'`)
-- [x] Update JS platform filter: `r._is_gads_agg ? p === 'Google'` → `(r.platform || 'Other') === p`
+- [x] Add `load_bing_data()` to `generate_dashboard.py`
+- [x] Update `build_campaign_rows()` to accept `bing_data` and add Bing aggregate rows
+- [x] Update JS platform filter: use `r.platform` for all rows (not hardcoded `'Google'`)
 - [x] Pass `bing_data` from `main()` to `build_campaign_rows()`
-- [ ] Regenerate + verify (requires BingData tab to be populated by running sync_bing_to_sheet.py)
+- [ ] Regenerate + verify end-to-end (requires BingData tab populated via `sync_bing_to_sheet.py`)
 
-**How to test:**
-- Run `generate_dashboard.py` — if BingData tab is populated, spend totals in Campaign Overview increase
-- Switch platform filter to "Bing" — only Bing rows visible
-- Switch to "Google" — Google-only rows
+---
+
+### Task: Consolidate period filter — single top bar drives all tabs ✅
+Previously the Overview tab had its own period picker, creating two separate date filters.
+
+- [x] Remove `buildPeriodPicker()` from Overview tab — replaced with static `showPeriodLabel()`
+- [x] Add `monthsInRange(fromYM, toYM)` helper — returns all YYYY-MM strings in a range
+- [x] `renderChannelOverview()` now receives an array of months from `render(fromYM, toYM)`
+- [x] Add `aggregateChannelRows()` — sums additive metrics, recomputes derived rates across multi-month selections
+- [x] Period label displays "Showing: **Jan '26 – Mar '26**" in top bar area of Overview tab
+- [x] Pushed to GitHub Pages
+
+---
+
+### Task: Fix weekly GadsData sync (GitHub Actions) ✅
+The Monday sync had been failing for 2 weeks (Mar 30 + Apr 6) — GadsData not updated since Mar 23.
+
+- [x] Root cause: `f"{yr}-{mo:02d}"` in `sync_channel_summary_gads()` — `mo` was a string, `:02d` requires int
+- [x] Fix: `f"{int(yr)}-{int(mo):02d}"`
+- [x] Pushed fix to main; manually triggered workflow — GadsData will re-sync with 2 weeks of missing data
 
 ---
 
@@ -82,6 +93,20 @@ _(Moved to Active Sprint above)_
 - [x] `load_search_terms()` in `generate_dashboard.py`
 - [x] Search Terms tab with filter buttons, search box, negative keyword suggestions
 - [x] `renderSearchTermsTab()` JS function
+
+---
+
+### Task: Period filter — cap at last completed month
+Currently "Last 3M" includes the current partial month, so Cost/MQL and Cost/SQL are inflated (spend is real, MQLs still accumulating).
+
+**Fix:** Cap the default `toYM` at `current_month - 1` so the dashboard always defaults to completed months only. A partial-month warning ("April data is incomplete") can be shown if the user manually extends to current month.
+
+**Sub-tasks:**
+- [ ] In `render()` JS: compute `lastCompleteMonth` = today's month minus 1
+- [ ] Update preset buttons (Last 1M, 3M, YTD) to use `lastCompleteMonth` as `toYM`
+- [ ] Optionally: show a banner if user selects current month warning that data is partial
+
+**Why:** GadsData and CampaignsData (Looker/Salesforce) are both monthly-granularity. Mid-month views show mismatched spend vs MQL totals. Always viewing completed months avoids misleading Cost/MQL figures.
 
 ---
 
