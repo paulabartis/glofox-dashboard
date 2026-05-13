@@ -663,10 +663,18 @@ def sync_channel_summary_gads(service, gads_monthly_rows: list[dict]) -> None:
     for row in gads_monthly_rows:
         yr = row["year"]
         mo = row["month"]
-        if yr == 0 or mo == 0:
+        if not yr or not mo:
             continue
         channel, ch_type = classify_google_channel(row["campaign_name"])
-        month_key = f"{int(yr)}-{int(mo):02d}"
+        # segments.year/month may return date strings like '2025-08-01' or ints
+        yr_s = str(yr)
+        mo_s = str(mo)
+        if "-" in yr_s:
+            month_key = yr_s[:7]  # 'YYYY-MM-01' → 'YYYY-MM'
+        elif "-" in mo_s:
+            month_key = mo_s[:7]
+        else:
+            month_key = f"{int(yr)}-{int(mo):02d}"
         key = (month_key, channel)
         if key not in agg:
             agg[key] = {
