@@ -41,6 +41,7 @@ GADS_TAB = "GadsData"
 ADGROUP_TAB = "AdGroupData"
 IS_TAB = "ImpShareWeekly"
 SEARCH_TERMS_TAB = "SearchTermsData"
+KEYWORD_TAB = "KeywordData"
 CAMPAIGN_IDS_TAB = "CampaignIds"
 CHANNEL_SUMMARY_TAB = "ChannelSummary"
 GLOFOX_CUSTOMER_ID = "6129012053"
@@ -259,6 +260,70 @@ def fetch_search_terms(client: GoogleAdsClient, months: int) -> list[dict]:
     return rows
 
 
+def fetch_keywords(client: GoogleAdsClient, months: int) -> list[dict]:
+    """
+    Fetch keyword_view data segmented by calendar month for SEARCH campaigns —
+    the bid-level keyword + match type + Quality Score, distinct from
+    search_term_view (the raw queries users typed).
+
+    Returns:
+        List of dicts: keyword_text, match_type, campaign_name, adgroup_name,
+                       year, month, impressions, clicks, cost, conversions,
+                       quality_score
+    """
+    start = months_ago_start(months)
+    end = last_complete_saturday()
+
+    ga_service = client.get_service("GoogleAdsService")
+
+    query = f"""
+        SELECT
+            ad_group_criterion.keyword.text,
+            ad_group_criterion.keyword.match_type,
+            campaign.name,
+            ad_group.name,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros,
+            metrics.conversions,
+            ad_group_criterion.quality_info.quality_score,
+            segments.year,
+            segments.month
+        FROM keyword_view
+        WHERE segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'
+            AND campaign.status != 'REMOVED'
+            AND campaign.advertising_channel_type = 'SEARCH'
+            AND ad_group_criterion.status != 'REMOVED'
+        ORDER BY metrics.cost_micros DESC
+        LIMIT 5000
+    """
+
+    response = ga_service.search(customer_id=GLOFOX_CUSTOMER_ID, query=query)
+
+    match_type_names = {
+        0: "UNSPECIFIED", 1: "UNKNOWN", 2: "EXACT", 3: "PHRASE", 4: "BROAD",
+    }
+
+    rows = []
+    for row in response:
+        qs = row.ad_group_criterion.quality_info.quality_score
+        rows.append({
+            "keyword_text":  row.ad_group_criterion.keyword.text,
+            "match_type":    match_type_names.get(row.ad_group_criterion.keyword.match_type, "UNKNOWN"),
+            "campaign_name": row.campaign.name,
+            "adgroup_name":  row.ad_group.name,
+            "year":          row.segments.year,
+            "month":         row.segments.month,
+            "impressions":   row.metrics.impressions,
+            "clicks":        row.metrics.clicks,
+            "cost":          round(micros_to_currency(row.metrics.cost_micros), 2),
+            "conversions":   round(row.metrics.conversions, 1),
+            "quality_score": qs if qs > 0 else None,
+        })
+
+    return rows
+
+
 def fetch_impression_share_weekly(client: GoogleAdsClient, weeks: int = 16) -> list[dict]:
     """
     Fetch Search Impression Share and Lost IS (Rank) per campaign per ISO week.
@@ -451,6 +516,46 @@ def write_search_terms_to_sheet(service, rows: list[dict]) -> None:
     ).execute()
 
     print(f"  Written {len(rows)} rows to '{SEARCH_TERMS_TAB}' tab.")
+
+
+def write_keywords_to_sheet(service, rows: list[dict]) -> None:
+    """Clear KeywordData tab and write fresh keyword data with headers."""
+    sheets = service.spreadsheets()
+
+    ensure_tab_exists(service, KEYWORD_TAB)
+
+    sheets.values().clear(
+        spreadsheetId=SHEET_ID,
+        range=f"{KEYWORD_TAB}!A:K",
+    ).execute()
+
+    headers = ["Keyword", "Match Type", "Campaign", "Ad Group", "Year", "Month",
+               "Impressions", "Clicks", "Cost", "Conversions", "Quality Score"]
+    values = [headers] + [
+        [
+            r["keyword_text"],
+            r["match_type"],
+            r["campaign_name"],
+            r["adgroup_name"],
+            r["year"],
+            r["month"],
+            r["impressions"],
+            r["clicks"],
+            r["cost"],
+            r["conversions"],
+            r["quality_score"] if r["quality_score"] is not None else "",
+        ]
+        for r in rows
+    ]
+
+    sheets.values().update(
+        spreadsheetId=SHEET_ID,
+        range=f"{KEYWORD_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": values},
+    ).execute()
+
+    print(f"  Written {len(rows)} rows to '{KEYWORD_TAB}' tab.")
 
 
 def fetch_change_events(client: GoogleAdsClient, days: int = 14) -> list[dict]:
@@ -769,6 +874,10 @@ def main():
     st_rows = fetch_search_terms(gads_client, args.months)
     print(f"  Retrieved {len(st_rows)} search term-month rows.")
 
+    print(f"[4b/7] Fetching last {args.months} months of keyword data from Google Ads...")
+    kw_rows = fetch_keywords(gads_client, args.months)
+    print(f"  Retrieved {len(kw_rows)} keyword-month rows.")
+
     print(f"[5/7] Fetching last 16 weeks of Impression Share + last 14 days of change events...")
     is_rows = fetch_impression_share_weekly(gads_client, weeks=16)
     print(f"  Retrieved {len(is_rows)} weekly IS rows.")
@@ -780,6 +889,7 @@ def main():
     write_to_sheet(sheets_service, rows)
     write_adgroup_to_sheet(sheets_service, ag_rows)
     write_search_terms_to_sheet(sheets_service, st_rows)
+    write_keywords_to_sheet(sheets_service, kw_rows)
     write_is_to_sheet(sheets_service, is_rows)
     write_change_events_to_sheet(sheets_service, change_rows)
 
@@ -791,7 +901,7 @@ def main():
     print(f"\n[8/8] Syncing Google Ads rows to ChannelSummary tab...")
     sync_channel_summary_gads(sheets_service, rows)
 
-    print("\nDone! GadsData, AdGroupData, SearchTermsData, ImpShareWeekly, ChangeEvents, CampaignIds, and ChannelSummary tabs are up to date.")
+    print("\nDone! GadsData, AdGroupData, SearchTermsData, KeywordData, ImpShareWeekly, ChangeEvents, CampaignIds, and ChannelSummary tabs are up to date.")
 
 
 if __name__ == "__main__":

@@ -240,14 +240,22 @@
   .ag-campaign-cell { font-weight:700 !important; color:#1E293B !important; line-height:1.4; }
   .ag-type-badge { font-size:11px; font-weight:500; color:#94A3B8; }
 
-  /* ── Search Terms tab ── */
-  .st-filter-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:2px; }
-  .st-filter-btn {
+  /* ── Search Terms / Keywords tabs ── */
+  .st-filter-bar, .kw-filter-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:2px; }
+  .st-filter-btn, .kw-filter-btn {
     padding:5px 12px; border:1.5px solid #CBD5E1; border-radius:5px;
     font-size:12px; font-weight:600; cursor:pointer; background:#fff; color:#64748B;
   }
-  .st-filter-btn.active { background:#3B82F6; color:#fff; border-color:#3B82F6; }
+  .st-filter-btn.active, .kw-filter-btn.active { background:#3B82F6; color:#fff; border-color:#3B82F6; }
   .st-neg-badge { font-size:11px; font-weight:700; color:#EF4444; }
+  .kw-match-badge {
+    font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;
+    color:#475569; background:#F1F5F9;
+  }
+  .kw-qs-badge { font-size:12px; font-weight:700; padding:2px 8px; border-radius:4px; }
+  .kw-qs-good { color:#16A34A; background:#F0FDF4; }
+  .kw-qs-warn { color:#D97706; background:#FFFBEB; }
+  .kw-qs-bad  { color:#DC2626; background:#FEF2F2; }
 
   /* ── Optimizations tab ── */
   .opt-period-note { font-size:12px; color:#94A3B8; margin:-12px 0 20px; }
@@ -526,6 +534,7 @@
     <button class="tab-btn" data-tab="changes">Account Changes</button>
     <button class="tab-btn" data-tab="summary">Weekly Summary</button>
     <button class="tab-btn" data-tab="searchterms">Search Terms</button>
+    <button class="tab-btn" data-tab="keywords">Keywords</button>
   </div>
 
   <!-- Overview tab (CMO multi-channel view) -->
@@ -814,6 +823,38 @@
       <p id="st-neg-summary" style="margin-top:12px;font-size:12px;color:#64748B"></p>
     </div>
   </div><!-- /tab-searchterms -->
+
+  <!-- Keywords tab -->
+  <div id="tab-keywords" style="display:none">
+    <div class="section">
+      <div class="section-title">
+        Keywords
+        <span class="badge">Google Ads · SEARCH campaigns only</span>
+      </div>
+      <div class="kw-filter-bar">
+        <button class="kw-filter-btn active" data-kwf="all">All</button>
+        <button class="kw-filter-btn" data-kwf="lowqs">Low Quality Score (&lt;5)</button>
+        <button class="kw-filter-btn" data-kwf="zero">Zero conversions</button>
+      </div>
+      <div class="search-bar" style="margin-top:10px">
+        <input id="kw-search" class="search-input" type="text" placeholder="Filter keywords or campaigns…">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th style="text-align:left">Keyword</th>
+            <th>Match Type</th>
+            <th style="text-align:left">Campaign / Ad Group</th>
+            <th>Cost</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Avg CPC</th>
+            <th>Conv</th><th>Cost/Conv</th>
+            <th>Quality Score</th>
+          </tr></thead>
+          <tbody id="tbody-keywords"></tbody>
+        </table>
+      </div>
+      <p id="kw-lowqs-summary" style="margin-top:12px;font-size:12px;color:#64748B"></p>
+    </div>
+  </div><!-- /tab-keywords -->
 
   <!-- Optimizations tab -->
   <div id="tab-opts" style="display:none">
@@ -1199,6 +1240,93 @@ function renderSearchTermsTab(fromYM, toYM) {
     .reduce((s, r) => s + r.cost, 0);
   document.getElementById('st-neg-summary').textContent = negCount > 0
     ? `${negCount} term${negCount > 1 ? 's' : ''} with ${fmt$(negSpend)} spend and 0 conversions — consider adding as negatives`
+    : '';
+}
+
+function renderKeywordsTab(fromYM, toYM) {
+  const activeFilter = (document.querySelector('.kw-filter-btn.active') || {}).dataset?.kwf || 'all';
+  const q = ((document.getElementById('kw-search') || {}).value || '').trim().toLowerCase();
+
+  // Aggregate by (keyword, match_type, campaign, adgroup) for selected period.
+  // quality_score is a live/current attribute, not historical — every month
+  // row for a keyword carries the same current value, so just keep whichever
+  // non-null value is seen.
+  const byKey = {};
+  for (const r of (D.keywords || [])) {
+    const ym = r.year * 100 + r.month;
+    if (ym < fromYM || ym > toYM) continue;
+    const key = r.keyword_text + '|||' + r.match_type + '|||' + r.campaign + '|||' + r.adgroup;
+    if (!byKey[key]) byKey[key] = {
+      keyword_text: r.keyword_text, match_type: r.match_type,
+      campaign: r.campaign, adgroup: r.adgroup,
+      campaign_type: r.campaign_type, region: r.region,
+      impressions: 0, clicks: 0, cost: 0, conversions: 0, quality_score: null,
+    };
+    byKey[key].impressions  += r.impressions;
+    byKey[key].clicks       += r.clicks;
+    byKey[key].cost         += r.cost;
+    byKey[key].conversions  += r.conversions;
+    if (r.quality_score != null) byKey[key].quality_score = r.quality_score;
+  }
+
+  let rows = Object.values(byKey);
+
+  // Apply filter
+  if (activeFilter === 'lowqs') rows = rows.filter(r => r.quality_score != null && r.quality_score < 5);
+  else if (activeFilter === 'zero') rows = rows.filter(r => r.conversions === 0);
+
+  // Apply search query
+  if (q) rows = rows.filter(r =>
+    r.keyword_text.toLowerCase().includes(q) ||
+    r.campaign.toLowerCase().includes(q) ||
+    r.adgroup.toLowerCase().includes(q)
+  );
+
+  // Sort by cost descending
+  rows.sort((a, b) => b.cost - a.cost);
+
+  const tbody = document.getElementById('tbody-keywords');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="empty">No keyword data for this period.</td></tr>`;
+    document.getElementById('kw-lowqs-summary').textContent = '';
+    return;
+  }
+
+  function qsClass(qs) {
+    if (qs == null) return '';
+    if (qs >= 7) return 'kw-qs-good';
+    if (qs >= 5) return 'kw-qs-warn';
+    return 'kw-qs-bad';
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const costPerConv = r.conversions > 0 ? fmt$(r.cost / r.conversions) : '—';
+    const ctr = r.impressions > 0 ? fmtPct(r.clicks / r.impressions) : '—';
+    const avgCpc = r.clicks > 0 ? fmt$(r.cost / r.clicks) : '—';
+    const qsCell = r.quality_score != null
+      ? `<span class="kw-qs-badge ${qsClass(r.quality_score)}">${r.quality_score}/10</span>`
+      : `<span style="color:#94A3B8">—</span>`;
+    return `<tr>
+      <td style="text-align:left;color:#1E293B;font-weight:500">${r.keyword_text}</td>
+      <td><span class="kw-match-badge">${r.match_type}</span></td>
+      <td style="text-align:left;color:#64748B;font-size:12px">${r.campaign}<br><span style="color:#94A3B8">${r.adgroup}</span></td>
+      <td>${fmt$(r.cost)}</td>
+      <td>${fmtN(r.impressions)}</td>
+      <td>${fmtN(r.clicks)}</td>
+      <td>${ctr}</td>
+      <td>${avgCpc}</td>
+      <td>${r.conversions > 0 ? r.conversions.toFixed(1) : '0'}</td>
+      <td>${costPerConv}</td>
+      <td>${qsCell}</td>
+    </tr>`;
+  }).join('');
+
+  // Summary line: count of low-QS keywords across all rows in period (not just filtered)
+  const allRows = Object.values(byKey);
+  const lowQsRows = allRows.filter(r => r.quality_score != null && r.quality_score < 5);
+  const lowQsSpend = lowQsRows.reduce((s, r) => s + r.cost, 0);
+  document.getElementById('kw-lowqs-summary').textContent = lowQsRows.length > 0
+    ? `${lowQsRows.length} keyword${lowQsRows.length > 1 ? 's' : ''} with Quality Score below 5 and ${fmt$(lowQsSpend)} spend — review for relevance/landing page match`
     : '';
 }
 
@@ -2985,6 +3113,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-changes').style.display      = tab === 'changes'      ? '' : 'none';
     document.getElementById('tab-summary').style.display      = tab === 'summary'      ? '' : 'none';
     document.getElementById('tab-searchterms').style.display  = tab === 'searchterms'  ? '' : 'none';
+    document.getElementById('tab-keywords').style.display     = tab === 'keywords'     ? '' : 'none';
     if (tab === 'campaign')    renderCampaignOverview(lastRange.fromYM, lastRange.toYM);
     if (tab === 'adgroups')    renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
     if (tab === 'opts')        renderOptimizationsTab();
@@ -2992,6 +3121,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'changes')     renderChangesTab();
     if (tab === 'summary')     renderWeeklySummaryTab();
     if (tab === 'searchterms') renderSearchTermsTab(lastRange.fromYM, lastRange.toYM);
+    if (tab === 'keywords')    renderKeywordsTab(lastRange.fromYM, lastRange.toYM);
   });
 });
 
@@ -3007,6 +3137,7 @@ document.querySelectorAll('.plat-btn').forEach(btn => {
 document.addEventListener('input', e => {
   if (e.target.id === 'ag-search') renderAdGroupsTab(lastRange.fromYM, lastRange.toYM);
   if (e.target.id === 'st-search') renderSearchTermsTab(lastRange.fromYM, lastRange.toYM);
+  if (e.target.id === 'kw-search') renderKeywordsTab(lastRange.fromYM, lastRange.toYM);
 });
 
 // Search terms filter buttons
@@ -3015,6 +3146,11 @@ document.addEventListener('click', e => {
     document.querySelectorAll('.st-filter-btn').forEach(b => b.classList.remove('active'));
     e.target.classList.add('active');
     renderSearchTermsTab(lastRange.fromYM, lastRange.toYM);
+  }
+  if (e.target.classList.contains('kw-filter-btn')) {
+    document.querySelectorAll('.kw-filter-btn').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    renderKeywordsTab(lastRange.fromYM, lastRange.toYM);
   }
 });
 

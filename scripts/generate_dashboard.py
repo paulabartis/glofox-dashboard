@@ -407,6 +407,51 @@ def load_search_terms(service) -> list[dict]:
     return result
 
 
+def load_keywords(service) -> list[dict]:
+    """
+    KeywordData tab (written by sync_gads_to_sheet.py).
+    Columns: Keyword | Match Type | Campaign | Ad Group | Year | Month |
+             Impressions | Clicks | Cost | Conversions | Quality Score
+
+    Uses parse_adgroup_campaign_name() since these are Google Ads readable names.
+    Quality Score is a live/current attribute (not a monthly-historical metric),
+    so every month-row for a given keyword carries the same current QS value.
+    Returns empty list if tab doesn't exist yet.
+    """
+    try:
+        rows = read_tab(service, "KeywordData")
+    except Exception:
+        return []
+    result = []
+    for row in rows[1:]:  # skip header
+        if len(row) < 10:
+            continue
+        keyword_text  = str(row[0]).strip()
+        match_type    = str(row[1]).strip()
+        campaign_name = str(row[2]).strip()
+        adgroup_name  = str(row[3]).strip()
+        if not keyword_text or not campaign_name:
+            continue
+        meta = parse_adgroup_campaign_name(campaign_name)
+        qs_raw = row[10] if len(row) > 10 else ""
+        result.append({
+            "keyword_text":  keyword_text,
+            "match_type":    match_type,
+            "campaign":      campaign_name,
+            "adgroup":       adgroup_name,
+            "year":          safe_int(row[4]),
+            "month":         parse_month_from_date(row[5]),
+            "impressions":   safe_int(row[6]),
+            "clicks":        safe_int(row[7]),
+            "cost":          safe_float(row[8]),
+            "conversions":   safe_float(row[9]) if len(row) > 9 else 0.0,
+            "quality_score": safe_int(qs_raw) if str(qs_raw).strip() != "" else None,
+            "campaign_type": meta["campaign_type"],
+            "region":        meta["region"],
+        })
+    return result
+
+
 def load_campaign_ids(service) -> dict[str, str]:
     """
     CampaignIds tab (written by sync_gads_to_sheet.py fetch_campaign_ids).
@@ -1543,6 +1588,7 @@ def main():
     monthly_summary = load_monthly_summary(service)
     adgroup_data = load_adgroup_data(service)
     search_terms = load_search_terms(service)
+    keywords = load_keywords(service)
     is_weekly = load_is_weekly(service)
     change_events = load_change_events(service)
     campaign_ids_map = load_campaign_ids(service)
@@ -1554,6 +1600,7 @@ def main():
     print(f"  MonthlySummary: {len(monthly_summary)} periods")
     print(f"  AdGroupData (paid PPC): {len(adgroup_data)} rows")
     print(f"  SearchTermsData: {len(search_terms)} rows")
+    print(f"  KeywordData: {len(keywords)} rows")
     print(f"  ImpShareWeekly: {len(is_weekly)} weeks")
     print(f"  ChangeEvents: {len(change_events)} events")
     print(f"  ChannelSummary: {len(channel_summary)} rows")
@@ -1586,6 +1633,7 @@ def main():
         "monthly_kpis":  monthly_summary,
         "adgroups":      adgroup_data,
         "search_terms":  search_terms,
+        "keywords":      keywords,
         "optimizations":    optimizations,
         "ag_optimizations": ag_optimizations,
         "is_weekly":        is_weekly,
