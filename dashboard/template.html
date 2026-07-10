@@ -458,6 +458,7 @@
   @media (max-width:700px) { .ch-charts-row { grid-template-columns:1fr; } }
   .ch-chart-card { background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:18px 20px; }
   .ch-chart-title { font-size:13px; font-weight:700; color:#1E293B; margin-bottom:14px; }
+  .ch-chart-box { position:relative; height:240px; }
   /* Budget pacing */
   .ch-pacing-section { background:#fff; border-radius:10px; border:1px solid #E2E8F0; padding:18px 20px; margin-bottom:20px; }
   .ch-pacing-title { font-size:13px; font-weight:700; color:#1E293B; margin-bottom:14px; }
@@ -591,11 +592,11 @@
   <div class="ch-charts-row">
     <div class="ch-chart-card">
       <div class="ch-chart-title">Spend allocation by channel</div>
-      <canvas id="ch-chart-donut" height="180"></canvas>
+      <div class="ch-chart-box"><canvas id="ch-chart-donut"></canvas></div>
     </div>
     <div class="ch-chart-card">
       <div class="ch-chart-title">Weekly SQL volume — SQL channels only</div>
-      <canvas id="ch-chart-weekly-sql" height="180"></canvas>
+      <div class="ch-chart-box"><canvas id="ch-chart-weekly-sql"></canvas></div>
     </div>
   </div>
 
@@ -2819,6 +2820,8 @@ function renderChannelOverview(initMonths) {
         }],
       },
       options: {
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { position:'bottom', labels:{ font:{size:11}, padding:10 } },
           tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${chFmt(ctx.raw,'currency')}` } },
@@ -2850,6 +2853,8 @@ function renderChannelOverview(initMonths) {
         datasets: wDatasets,
       },
       options: {
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { position:'bottom', labels:{ font:{size:11} } } },
         scales: { x:{ stacked:true }, y:{ stacked:true, beginAtZero:true, ticks:{stepSize:1} } },
       },
