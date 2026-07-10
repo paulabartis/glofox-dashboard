@@ -2499,10 +2499,12 @@ function showPeriodLabel(selMonths) {
 }
 
 function monthsInRange(fromYM, toYM) {
-  // Returns all YYYY-MM strings from fromYM to toYM inclusive.
+  // fromYM/toYM are numeric YYYYMM (matching ymKey() and MONTHS.ym everywhere
+  // else in this file) — but channel_view.channel_rows uses dash-formatted
+  // "YYYY-MM" strings, so this still returns dash-formatted strings.
   const result = [];
-  let [y, m] = fromYM.split('-').map(Number);
-  const [ty, tm] = toYM.split('-').map(Number);
+  let y = Math.floor(Number(fromYM) / 100), m = Number(fromYM) % 100;
+  const ty = Math.floor(Number(toYM) / 100), tm = Number(toYM) % 100;
   while (y < ty || (y === ty && m <= tm)) {
     result.push(`${y}-${String(m).padStart(2, '0')}`);
     m++;
@@ -3013,7 +3015,7 @@ document.addEventListener('click', e => {
 
 // ── Init (default: This Month) ────────────────────────────────────────────────
 document.getElementById('meta-line').textContent =
-  'Last updated: ' + D.generated_at + '  ·  Data source: Google Ads API + Looker';
+  'Last updated: ' + D.generated_at + '  ·  Data source: Google Ads API + Salesforce';
 document.getElementById('footer-note').innerHTML =
   'Paid Search = Google &amp; Bing SEM  ·  Paid Other = Facebook, Display &amp; Demand Gen  ·  ' +
   'Demand Gen = DG/DIS campaigns (shown as separate row in campaign type table)  ·  Generated: ' + D.generated_at;
